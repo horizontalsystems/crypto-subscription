@@ -45,4 +45,12 @@ contract CryptoSubscription is AccessControl {
         emit PaymentTokenChanged(oldAddress, _address, withdrawAddress, balance);
     }
 
+    function updateCommissionRate(uint16 newRate) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        commissionRate = newRate;
+    }
+
+    function updateDiscountRate(uint16 newRate) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        discountRate = newRate;
+    }
+
 }

@@ -101,5 +101,33 @@ describe('CryptoSubscription', function () {
           .withArgs(paymentToken.address, otherPaymentToken.address, other.address, amount)
       })
     })
+
+    describe('#updateCommissionRate', () => {
+      let newRate = 0.045
+      let newContractRate = newRate * rateMultiplier
+
+      it('reverts if called by non-default admin role', async () => {
+        await expect(contract.connect(moderator).updateCommissionRate(newContractRate)).to.be.reverted
+      })
+
+      it('changes commission rate', async () => {
+        await contract.connect(owner).updateCommissionRate(newContractRate)
+        expect(await contract.commissionRate()).to.eq(newContractRate)
+      })
+    })
+
+    describe('#updateDsicountRate', () => {
+      let newRate = 0.035
+      let newContractRate = newRate * rateMultiplier
+
+      it('reverts if called by non-default admin role', async () => {
+        await expect(contract.connect(moderator).updateDiscountRate(newContractRate)).to.be.reverted
+      })
+
+      it('changes discount rate', async () => {
+        await contract.connect(owner).updateDiscountRate(newContractRate)
+        expect(await contract.discountRate()).to.eq(newContractRate)
+      })
+    })
   })
 })
