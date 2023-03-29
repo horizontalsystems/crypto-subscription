@@ -5,30 +5,44 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract CryptoSubscription is AccessControl {
-    IERC20Metadata private _token;
+    event PaymentTokenChanged(address indexed _oldAddress, address indexed _newAddress, address withdrawAddress, uint indexed withdrawAmount);
+
+    bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
+
+    IERC20Metadata private _paymentToken;
     uint16 public commissionRate;
     uint16 public discountRate;
 
     mapping(uint16 => uint16) private _plans;
 
-    constructor(address _tokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory _planDurations, uint16[] memory _planCosts) {
+    constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _token = IERC20Metadata(_tokenAddress);
+        _paymentToken = IERC20Metadata(paymentTokenAddress);
         commissionRate = _commissionRate;
         discountRate = _discountRate;
 
-        uint planLength = _planDurations.length;
+        uint planLength = planDurations.length;
         for (uint i = 0; i < planLength; i++) {
-            _plans[_planDurations[i]] = _planCosts[i];
+            _plans[planDurations[i]] = planCosts[i];
         }
     }
 
-    function tokenAddress() public view returns (address) {
-        return address(_token);
+    function paymentToken() public view returns (address) {
+        return address(_paymentToken);
     }
 
     function planCost(uint16 duration) public view returns (uint16) {
         return _plans[duration];
+    }
+
+    function changePaymentToken(address _address, address withdrawAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        address oldAddress = address(_paymentToken);
+        uint balance = _paymentToken.balanceOf(address(this));
+
+        _paymentToken.transfer(withdrawAddress, balance);
+        _paymentToken = IERC20Metadata(_address);
+
+        emit PaymentTokenChanged(oldAddress, _address, withdrawAddress, balance);
     }
 
 }
