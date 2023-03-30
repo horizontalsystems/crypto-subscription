@@ -1,5 +1,9 @@
 import { BigNumber } from 'ethers'
 
+export function dayToSeconds(days: number) {
+  return days * 24 * 60 * 60
+}
+
 export function toTokenAmount(amount: number, decimals: number) {
   return BigNumber.from(amount).mul(BigNumber.from(10).pow(decimals))
 }

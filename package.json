@@ -12,6 +12,7 @@
   "license": "MIT",
   "dependencies": {
     "@defi-wonderland/smock": "^2.3.4",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.8",
     "@openzeppelin/contracts": "^4.7.3",
     "dotenv": "^16.0.3",
     "prettier": "^2.7.1",

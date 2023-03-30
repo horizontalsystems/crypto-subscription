@@ -5,15 +5,20 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract CryptoSubscription is AccessControl {
-    event PaymentTokenChanged(address indexed _oldAddress, address indexed _newAddress, address withdrawAddress, uint indexed withdrawAmount);
+    event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
+    event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
+
+    error InvalidPlan(uint16 duration);
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
+    uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
 
     IERC20Metadata private _paymentToken;
     uint16 public commissionRate;
     uint16 public discountRate;
 
     mapping(uint16 => uint16) private _plans;
+    mapping(address => uint32) private _subscribers;
 
     constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -27,6 +32,8 @@ contract CryptoSubscription is AccessControl {
         }
     }
 
+    // Public View Methods
+
     function paymentToken() public view returns (address) {
         return address(_paymentToken);
     }
@@ -35,6 +42,12 @@ contract CryptoSubscription is AccessControl {
         return _plans[duration];
     }
 
+    function subscriptionDeadline(address _address) public view returns (uint32) {
+        return _subscribers[_address];
+    }
+
+    // Admin Actions
+
     function changePaymentToken(address _address, address withdrawAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
         address oldAddress = address(_paymentToken);
         uint balance = _paymentToken.balanceOf(address(this));
@@ -42,7 +55,7 @@ contract CryptoSubscription is AccessControl {
         _paymentToken.transfer(withdrawAddress, balance);
         _paymentToken = IERC20Metadata(_address);
 
-        emit PaymentTokenChanged(oldAddress, _address, withdrawAddress, balance);
+        emit PaymentTokenChange(oldAddress, _address, withdrawAddress, balance);
     }
 
     function updateCommissionRate(uint16 newRate) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -58,6 +71,26 @@ contract CryptoSubscription is AccessControl {
         for (uint i = 0; i < length; i++) {
             _plans[durations[i]] = costs[i];
         }
+    }
+
+    // Subscriber Actions
+
+    function subscribe(uint16 duration) public {
+        uint16 cost = _plans[duration];
+
+        if (cost == 0) revert InvalidPlan(duration);
+
+        _paymentToken.transferFrom(msg.sender, address(this), cost * 10 ** _paymentToken.decimals());
+
+        uint32 currentDeadline = _subscribers[msg.sender];
+
+        if (currentDeadline == 0 || block.timestamp > currentDeadline) {
+            _subscribers[msg.sender] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+        } else {
+            _subscribers[msg.sender] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+        }
+
+        emit Subscription(msg.sender, duration, cost);
     }
 
 }

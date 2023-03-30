@@ -3,7 +3,8 @@ import { ethers } from 'hardhat'
 import { FakeContract, smock } from '@defi-wonderland/smock'
 import { Wallet } from 'ethers'
 import { CryptoSubscription, IERC20Metadata } from '../typechain-types'
-import { toTokenAmount } from './helpers'
+import { dayToSeconds, toTokenAmount } from './helpers'
+import { time } from '@nomicfoundation/hardhat-network-helpers'
 
 use(smock.matchers)
 
@@ -17,14 +18,24 @@ describe('CryptoSubscription', function () {
   let commissionRate = 0.025
   let discountRate = 0.015
 
-  let plans: { [key: number]: number } = { 30: 200, 90: 500, 180: 800 }
+  let duration1 = 30
+  let cost1 = 200
+  let duration2 = 90
+  let cost2 = 500
+  let duration3 = 180
+  let cost3 = 800
+
+  let durations = [duration1, duration2, duration3]
+  let costs = [cost1, cost2, cost3]
 
   let owner: Wallet
   let moderator: Wallet
+  let subscriber1: Wallet
+  let subscriber2: Wallet
   let other: Wallet
 
   beforeEach(async () => {
-    ;[owner, moderator, other] = await (ethers as any).getSigners()
+    ;[owner, moderator, subscriber1, subscriber2, other] = await (ethers as any).getSigners()
 
     paymentToken = await smock.fake('IERC20Metadata')
     paymentToken.decimals.whenCalledWith().returns(paymentTokenDecimals)
@@ -34,8 +45,8 @@ describe('CryptoSubscription', function () {
       paymentToken.address,
       commissionRate * rateMultiplier,
       discountRate * rateMultiplier,
-      Object.keys(plans),
-      Object.values(plans)
+      durations,
+      costs
     )
 
     let moderatorRole = await contract.MODERATOR_ROLE()
@@ -61,9 +72,9 @@ describe('CryptoSubscription', function () {
     })
 
     describe('set initial plan costs', () => {
-      for (let duration in plans) {
-        it(`sets ${duration}-day plan cost to provided value ${plans[duration]}`, async () => {
-          expect(await contract.planCost(duration)).to.eq(plans[duration])
+      for (let i in durations) {
+        it(`sets ${durations[i]}-day plan cost to provided value ${costs[i]}`, async () => {
+          expect(await contract.planCost(durations[i])).to.eq(costs[i])
         })
       }
     })
@@ -99,7 +110,7 @@ describe('CryptoSubscription', function () {
 
       it('emits event when payment token changed', async () => {
         await expect(contract.connect(owner).changePaymentToken(otherPaymentToken.address, other.address))
-          .to.emit(contract, 'PaymentTokenChanged')
+          .to.emit(contract, 'PaymentTokenChange')
           .withArgs(paymentToken.address, otherPaymentToken.address, other.address, amount)
       })
     })
@@ -133,23 +144,107 @@ describe('CryptoSubscription', function () {
     })
 
     describe('#updatePlans', () => {
-      let updatedPlans: { [key: number]: number } = { 30: 400, 60: 700, 90: 0 }
-      let expectedNewPlans: { [key: number]: number } = { 30: 400, 60: 700, 90: 0, 180: 800 }
+      let updatedDurations = [duration1, duration2, 60]
+      let updatedCosts = [400, 0, 700]
+      let expectedDurations = [duration1, duration2, duration3, 60]
+      let expectedCosts = [400, 0, cost3, 700]
 
       it('reverts if called by non-default admin role', async () => {
-        await expect(contract.connect(moderator).updatePlans(Object.keys(updatedPlans), Object.values(updatedPlans))).to.be.reverted
+        await expect(contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
       })
 
       describe('merges current plans with provided ones', () => {
         beforeEach(async () => {
-          await contract.connect(owner).updatePlans(Object.keys(updatedPlans), Object.values(updatedPlans))
+          await contract.connect(owner).updatePlans(updatedDurations, updatedCosts)
         })
 
-        for (let duration in expectedNewPlans) {
-          it(`results in ${duration}-day plan cost equals ${expectedNewPlans[duration]}`, async () => {
-            expect(await contract.planCost(duration)).to.eq(expectedNewPlans[duration])
+        for (let i in expectedDurations) {
+          it(`results in ${expectedDurations[i]}-day plan cost equals ${expectedCosts[i]}`, async () => {
+            expect(await contract.planCost(expectedDurations[i])).to.eq(expectedCosts[i])
           })
         }
+      })
+    })
+
+    describe('#subscribe', () => {
+      it('reverts if plan does not exist', async () => {
+        let invalidDuration = 20
+        await expect(contract.connect(subscriber1).subscribe(invalidDuration))
+          .to.be.revertedWithCustomError(contract, 'InvalidPlan')
+          .withArgs(invalidDuration)
+      })
+
+      it('transfers payment tokens from subscriber to contract address', async () => {
+        await contract.connect(subscriber1).subscribe(duration1)
+
+        expect(paymentToken.transferFrom).to.have.been.calledOnceWith(
+          subscriber1.address,
+          contract.address,
+          toTokenAmount(cost1, paymentTokenDecimals)
+        )
+      })
+
+      it('emits event on subscription', async () => {
+        await expect(contract.connect(subscriber1).subscribe(duration1))
+          .to.emit(contract, 'Subscription')
+          .withArgs(subscriber1.address, duration1, cost1)
+      })
+
+      describe('new subscriber', () => {
+        it('sets deadline to duration time starting from block time', async () => {
+          let blockTimestamp = (await time.latest()) + 1
+
+          await time.setNextBlockTimestamp(blockTimestamp)
+          await contract.connect(subscriber1).subscribe(duration1)
+
+          let expectedDeadline = blockTimestamp + dayToSeconds(duration1)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
+      })
+
+      describe('existing non-expired subscriber', () => {
+        let initialSubscriptionTimestamp: number
+        let subscriptionTimestamp: number
+
+        beforeEach(async () => {
+          initialSubscriptionTimestamp = (await time.latest()) + 1
+          subscriptionTimestamp = initialSubscriptionTimestamp + dayToSeconds(duration1) - 1
+
+          await time.setNextBlockTimestamp(initialSubscriptionTimestamp)
+          await contract.connect(subscriber1).subscribe(duration1)
+        })
+
+        it('adds duration to deadline', async () => {
+          await time.setNextBlockTimestamp(subscriptionTimestamp)
+          await contract.connect(subscriber1).subscribe(duration2)
+
+          let expectedDeadline = initialSubscriptionTimestamp + dayToSeconds(duration1 + duration2)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
+      })
+
+      describe('existing expired subscriber', () => {
+        let initialSubscriptionTimestamp: number
+        let subscriptionTimestamp: number
+
+        beforeEach(async () => {
+          initialSubscriptionTimestamp = (await time.latest()) + 1
+          subscriptionTimestamp = initialSubscriptionTimestamp + dayToSeconds(duration1) + 1
+
+          await time.setNextBlockTimestamp(initialSubscriptionTimestamp)
+          await contract.connect(subscriber1).subscribe(duration1)
+        })
+
+        it('sets deadline to duration time starting from block time', async () => {
+          await time.setNextBlockTimestamp(subscriptionTimestamp)
+          await contract.connect(subscriber1).subscribe(duration2)
+
+          let expectedDeadline = subscriptionTimestamp + dayToSeconds(duration2)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
       })
     })
   })
