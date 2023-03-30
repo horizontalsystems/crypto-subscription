@@ -166,6 +166,54 @@ describe('CryptoSubscription', function () {
       })
     })
 
+    describe('#whitelist', () => {
+      let duration = 15
+
+      it('reverts if called by non-moderator role', async () => {
+        await expect(contract.connect(other).whitelist(subscriber1.address, duration)).to.be.reverted
+      })
+
+      it('emits event on whitelist', async () => {
+        await expect(contract.connect(moderator).whitelist(subscriber1.address, duration))
+          .to.emit(contract, 'Whitelist')
+          .withArgs(subscriber1.address, duration)
+      })
+
+      describe('for new subscriber', () => {
+        it('sets deadline to duration time starting from block time', async () => {
+          let currentTimestamp = (await time.latest()) + 1
+          await time.setNextBlockTimestamp(currentTimestamp)
+
+          await contract.connect(moderator).whitelist(subscriber1.address, duration)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
+        })
+      })
+
+      describe('for existing non-expired subscriber', () => {
+        it('adds duration to deadline', async () => {
+          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          await time.setNextBlockTimestamp(expirationTimestamp - 1)
+
+          await contract.connect(moderator).whitelist(subscriber1.address, duration)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration))
+        })
+      })
+
+      describe('for existing expired subscriber', () => {
+        it('sets deadline to duration time starting from block time', async () => {
+          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let currentTimestamp = expirationTimestamp + 1
+          await time.setNextBlockTimestamp(currentTimestamp)
+
+          await contract.connect(moderator).whitelist(subscriber1.address, duration)
+
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
+        })
+      })
+    })
+
     describe('#subscribe', () => {
       it('reverts if plan does not exist', async () => {
         let invalidDuration = 20
@@ -190,62 +238,48 @@ describe('CryptoSubscription', function () {
           .withArgs(subscriber1.address, duration1, cost1)
       })
 
-      describe('new subscriber', () => {
+      describe('for new subscriber', () => {
         it('sets deadline to duration time starting from block time', async () => {
-          let blockTimestamp = (await time.latest()) + 1
+          let currentTimestamp = (await time.latest()) + 1
+          await time.setNextBlockTimestamp(currentTimestamp)
 
-          await time.setNextBlockTimestamp(blockTimestamp)
           await contract.connect(subscriber1).subscribe(duration1)
 
-          let expectedDeadline = blockTimestamp + dayToSeconds(duration1)
-
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
         })
       })
 
-      describe('existing non-expired subscriber', () => {
-        let initialSubscriptionTimestamp: number
-        let subscriptionTimestamp: number
-
-        beforeEach(async () => {
-          initialSubscriptionTimestamp = (await time.latest()) + 1
-          subscriptionTimestamp = initialSubscriptionTimestamp + dayToSeconds(duration1) - 1
-
-          await time.setNextBlockTimestamp(initialSubscriptionTimestamp)
-          await contract.connect(subscriber1).subscribe(duration1)
-        })
-
+      describe('for existing non-expired subscriber', () => {
         it('adds duration to deadline', async () => {
-          await time.setNextBlockTimestamp(subscriptionTimestamp)
+          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          await time.setNextBlockTimestamp(expirationTimestamp - 1)
+
           await contract.connect(subscriber1).subscribe(duration2)
 
-          let expectedDeadline = initialSubscriptionTimestamp + dayToSeconds(duration1 + duration2)
-
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
         })
       })
 
-      describe('existing expired subscriber', () => {
-        let initialSubscriptionTimestamp: number
-        let subscriptionTimestamp: number
-
-        beforeEach(async () => {
-          initialSubscriptionTimestamp = (await time.latest()) + 1
-          subscriptionTimestamp = initialSubscriptionTimestamp + dayToSeconds(duration1) + 1
-
-          await time.setNextBlockTimestamp(initialSubscriptionTimestamp)
-          await contract.connect(subscriber1).subscribe(duration1)
-        })
-
+      describe('for existing expired subscriber', () => {
         it('sets deadline to duration time starting from block time', async () => {
-          await time.setNextBlockTimestamp(subscriptionTimestamp)
+          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let currentTimestamp = expirationTimestamp + 1
+          await time.setNextBlockTimestamp(currentTimestamp)
+
           await contract.connect(subscriber1).subscribe(duration2)
 
-          let expectedDeadline = subscriptionTimestamp + dayToSeconds(duration2)
-
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
         })
       })
     })
   })
+
+  async function mockDuration(signer: Wallet, duration: number) {
+    let subscriptionTimestamp = (await time.latest()) + 1
+
+    await time.setNextBlockTimestamp(subscriptionTimestamp)
+    await contract.connect(moderator).whitelist(signer.address, duration)
+
+    return subscriptionTimestamp + dayToSeconds(duration)
+  }
 })

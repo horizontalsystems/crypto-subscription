@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract CryptoSubscription is AccessControl {
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
+    event Whitelist(address indexed _address, uint16 duration);
     event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
 
     error InvalidPlan(uint16 duration);
@@ -73,6 +74,18 @@ contract CryptoSubscription is AccessControl {
         for (uint i = 0; i < length; i++) {
             _plans[durations[i]] = costs[i];
         }
+    }
+
+    function whitelist(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
+        uint32 currentDeadline = _subscribers[_address];
+
+        if (currentDeadline == 0 || block.timestamp > currentDeadline) {
+            _subscribers[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+        } else {
+            _subscribers[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+        }
+
+        emit Whitelist(_address, duration);
     }
 
     // Subscriber Actions
