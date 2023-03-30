@@ -77,14 +77,7 @@ contract CryptoSubscription is AccessControl {
     }
 
     function whitelist(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
-        uint32 currentDeadline = _subscribers[_address];
-
-        if (currentDeadline == 0 || block.timestamp > currentDeadline) {
-            _subscribers[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
-        } else {
-            _subscribers[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
-        }
-
+        _updateDeadline(_address, duration);
         emit Whitelist(_address, duration);
     }
 
@@ -96,16 +89,21 @@ contract CryptoSubscription is AccessControl {
         if (cost == 0) revert InvalidPlan(duration);
 
         _paymentToken.transferFrom(msg.sender, address(this), cost * 10 ** _paymentToken.decimals());
-
-        uint32 currentDeadline = _subscribers[msg.sender];
-
-        if (currentDeadline == 0 || block.timestamp > currentDeadline) {
-            _subscribers[msg.sender] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
-        } else {
-            _subscribers[msg.sender] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
-        }
+        _updateDeadline(msg.sender, duration);
 
         emit Subscription(msg.sender, duration, cost);
+    }
+
+    // Private Methods
+
+    function _updateDeadline(address _address, uint16 duration) private {
+        uint32 currentDeadline = _subscribers[_address];
+
+        if (currentDeadline == 0 || block.timestamp > currentDeadline) {
+            _subscribers[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+        } else {
+            _subscribers[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+        }
     }
 
 }
