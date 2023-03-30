@@ -58,15 +58,17 @@ contract CryptoSubscription is AccessControl {
         emit PaymentTokenChange(oldAddress, _address, withdrawAddress, balance);
     }
 
-    function updateCommissionRate(uint16 newRate) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    // Moderator Actions
+
+    function updateCommissionRate(uint16 newRate) public onlyRole(MODERATOR_ROLE) {
         commissionRate = newRate;
     }
 
-    function updateDiscountRate(uint16 newRate) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updateDiscountRate(uint16 newRate) public onlyRole(MODERATOR_ROLE) {
         discountRate = newRate;
     }
 
-    function updatePlans(uint16[] calldata durations, uint16[] calldata costs) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updatePlans(uint16[] calldata durations, uint16[] calldata costs) public onlyRole(MODERATOR_ROLE) {
         uint length = durations.length;
         for (uint i = 0; i < length; i++) {
             _plans[durations[i]] = costs[i];

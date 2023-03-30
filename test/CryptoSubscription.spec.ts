@@ -119,12 +119,12 @@ describe('CryptoSubscription', function () {
       let newRate = 0.045
       let newContractRate = newRate * rateMultiplier
 
-      it('reverts if called by non-default admin role', async () => {
-        await expect(contract.connect(moderator).updateCommissionRate(newContractRate)).to.be.reverted
+      it('reverts if called by non-moderator role', async () => {
+        await expect(contract.connect(other).updateCommissionRate(newContractRate)).to.be.reverted
       })
 
       it('changes commission rate', async () => {
-        await contract.connect(owner).updateCommissionRate(newContractRate)
+        await contract.connect(moderator).updateCommissionRate(newContractRate)
         expect(await contract.commissionRate()).to.eq(newContractRate)
       })
     })
@@ -133,12 +133,12 @@ describe('CryptoSubscription', function () {
       let newRate = 0.035
       let newContractRate = newRate * rateMultiplier
 
-      it('reverts if called by non-default admin role', async () => {
-        await expect(contract.connect(moderator).updateDiscountRate(newContractRate)).to.be.reverted
+      it('reverts if called by non-moderator role', async () => {
+        await expect(contract.connect(other).updateDiscountRate(newContractRate)).to.be.reverted
       })
 
       it('changes discount rate', async () => {
-        await contract.connect(owner).updateDiscountRate(newContractRate)
+        await contract.connect(moderator).updateDiscountRate(newContractRate)
         expect(await contract.discountRate()).to.eq(newContractRate)
       })
     })
@@ -149,13 +149,13 @@ describe('CryptoSubscription', function () {
       let expectedDurations = [duration1, duration2, duration3, 60]
       let expectedCosts = [400, 0, cost3, 700]
 
-      it('reverts if called by non-default admin role', async () => {
-        await expect(contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
+      it('reverts if called by non-moderator role', async () => {
+        await expect(contract.connect(other).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
       })
 
       describe('merges current plans with provided ones', () => {
         beforeEach(async () => {
-          await contract.connect(owner).updatePlans(updatedDurations, updatedCosts)
+          await contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)
         })
 
         for (let i in expectedDurations) {
