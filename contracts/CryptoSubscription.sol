@@ -53,4 +53,11 @@ contract CryptoSubscription is AccessControl {
         discountRate = newRate;
     }
 
+    function updatePlans(uint16[] calldata durations, uint16[] calldata costs) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint length = durations.length;
+        for (uint i = 0; i < length; i++) {
+            _plans[durations[i]] = costs[i];
+        }
+    }
+
 }

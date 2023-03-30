@@ -60,9 +60,11 @@ describe('CryptoSubscription', function () {
       expect(await contract.discountRate()).to.eq(discountRate * rateMultiplier)
     })
 
-    it('sets plans to provided ones', async () => {
+    describe('set initial plan costs', () => {
       for (let duration in plans) {
-        expect(await contract.planCost(duration)).to.eq(plans[duration])
+        it(`sets ${duration}-day plan cost to provided value ${plans[duration]}`, async () => {
+          expect(await contract.planCost(duration)).to.eq(plans[duration])
+        })
       }
     })
   })
@@ -116,7 +118,7 @@ describe('CryptoSubscription', function () {
       })
     })
 
-    describe('#updateDsicountRate', () => {
+    describe('#updateDiscountRate', () => {
       let newRate = 0.035
       let newContractRate = newRate * rateMultiplier
 
@@ -127,6 +129,27 @@ describe('CryptoSubscription', function () {
       it('changes discount rate', async () => {
         await contract.connect(owner).updateDiscountRate(newContractRate)
         expect(await contract.discountRate()).to.eq(newContractRate)
+      })
+    })
+
+    describe('#updatePlans', () => {
+      let updatedPlans: { [key: number]: number } = { 30: 400, 60: 700, 90: 0 }
+      let expectedNewPlans: { [key: number]: number } = { 30: 400, 60: 700, 90: 0, 180: 800 }
+
+      it('reverts if called by non-default admin role', async () => {
+        await expect(contract.connect(moderator).updatePlans(Object.keys(updatedPlans), Object.values(updatedPlans))).to.be.reverted
+      })
+
+      describe('merges current plans with provided ones', () => {
+        beforeEach(async () => {
+          await contract.connect(owner).updatePlans(Object.keys(updatedPlans), Object.values(updatedPlans))
+        })
+
+        for (let duration in expectedNewPlans) {
+          it(`results in ${duration}-day plan cost equals ${expectedNewPlans[duration]}`, async () => {
+            expect(await contract.planCost(duration)).to.eq(expectedNewPlans[duration])
+          })
+        }
       })
     })
   })
