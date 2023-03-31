@@ -214,6 +214,43 @@ describe('CryptoSubscription', function () {
       })
     })
 
+    describe('#addPromoCode', () => {
+      let promoCode = 'Promo Code'
+
+      describe('for active subscriber', () => {
+        beforeEach(async () => {
+          await mockDuration(subscriber1, 30)
+        })
+
+        it('reverts if promo code is empty', async () => {
+          await expect(contract.connect(subscriber1).addPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
+        })
+
+        it('reverts if promo code does already exist', async () => {
+          await contract.connect(subscriber1).addPromoCode(promoCode)
+
+          await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+            .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
+            .withArgs(promoCode)
+        })
+
+        it('adds promo code referencing caller address', async () => {
+          await contract.connect(subscriber1).addPromoCode(promoCode)
+
+          expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
+        })
+      })
+
+      describe('for inactive subscriber', () => {
+        it('reverts if caller has no active subscription', async () => {
+          await expect(contract.connect(subscriber1).addPromoCode(promoCode)).to.be.revertedWithCustomError(
+            contract,
+            'SubscriptionRequired'
+          )
+        })
+      })
+    })
+
     describe('#subscribe', () => {
       it('reverts if plan does not exist', async () => {
         let invalidDuration = 20

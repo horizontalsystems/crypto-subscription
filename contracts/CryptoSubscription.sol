@@ -10,6 +10,9 @@ contract CryptoSubscription is AccessControl {
     event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
 
     error InvalidPlan(uint16 duration);
+    error EmptyPromoCode();
+    error PromoCodeAlreadyExists(string promoCode);
+    error SubscriptionRequired();
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
     uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
@@ -20,6 +23,7 @@ contract CryptoSubscription is AccessControl {
 
     mapping(uint16 => uint16) private _plans;
     mapping(address => uint32) private _subscribers;
+    mapping(string => address) private _promoCodes;
 
     constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -31,6 +35,14 @@ contract CryptoSubscription is AccessControl {
         for (uint i = 0; i < planLength; i++) {
             _plans[planDurations[i]] = planCosts[i];
         }
+    }
+
+    // Modifiers
+
+    modifier activeSubscriber(address _address) {
+        uint32 currentDeadline = _subscribers[_address];
+        if (currentDeadline == 0 || block.timestamp > currentDeadline) revert SubscriptionRequired();
+        _;
     }
 
     // Public View Methods
@@ -45,6 +57,10 @@ contract CryptoSubscription is AccessControl {
 
     function subscriptionDeadline(address _address) public view returns (uint32) {
         return _subscribers[_address];
+    }
+
+    function promoCodeOwner(string memory promoCode) public view returns (address) {
+        return _promoCodes[promoCode];
     }
 
     // Admin Actions
@@ -79,6 +95,15 @@ contract CryptoSubscription is AccessControl {
     function whitelist(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
         _updateDeadline(_address, duration);
         emit Whitelist(_address, duration);
+    }
+
+    // Promoter Actions
+
+    function addPromoCode(string memory promoCode) public activeSubscriber(msg.sender) {
+        if (bytes(promoCode).length == 0) revert EmptyPromoCode();
+        if (_promoCodes[promoCode] != address(0)) revert PromoCodeAlreadyExists(promoCode);
+
+        _promoCodes[promoCode] = msg.sender;
     }
 
     // Subscriber Actions
