@@ -240,6 +240,12 @@ describe('CryptoSubscription', function () {
 
           expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
         })
+
+        it('emits event on addition', async () => {
+          await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+            .to.emit(contract, 'PromoCodeAddition')
+            .withArgs(subscriber1.address, promoCode)
+        })
       })
 
       describe('for inactive subscriber', () => {

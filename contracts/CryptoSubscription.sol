@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 contract CryptoSubscription is AccessControl {
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
     event Whitelist(address indexed _address, uint16 duration);
+    event PromoCodeAddition(address indexed owner, string promoCode);
     event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
     event SubscriptionWithPromoCode(address indexed subscriber, string promoCode, uint16 duration, uint32 cost);
 
@@ -106,6 +107,8 @@ contract CryptoSubscription is AccessControl {
         if (_promoCodes[promoCode] != address(0)) revert PromoCodeAlreadyExists(promoCode);
 
         _promoCodes[promoCode] = msg.sender;
+
+        emit PromoCodeAddition(msg.sender, promoCode);
     }
 
     // Subscriber Actions
