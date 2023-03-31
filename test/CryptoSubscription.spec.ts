@@ -192,7 +192,7 @@ describe('CryptoSubscription', function () {
 
       describe('for existing non-expired subscriber', () => {
         it('adds duration to deadline', async () => {
-          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
           await contract.connect(moderator).whitelist(subscriber1.address, duration)
@@ -203,7 +203,7 @@ describe('CryptoSubscription', function () {
 
       describe('for existing expired subscriber', () => {
         it('sets deadline to duration time starting from block time', async () => {
-          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           let currentTimestamp = expirationTimestamp + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
@@ -219,7 +219,7 @@ describe('CryptoSubscription', function () {
 
       describe('for active subscriber', () => {
         beforeEach(async () => {
-          await mockDuration(subscriber1, 30)
+          await mockSubscriptionDuration(subscriber1, 30)
         })
 
         it('reverts if promo code is empty', async () => {
@@ -288,7 +288,7 @@ describe('CryptoSubscription', function () {
 
       describe('for existing non-expired subscriber', () => {
         it('adds duration to deadline', async () => {
-          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
           await contract.connect(subscriber1).subscribe(duration2)
@@ -299,7 +299,7 @@ describe('CryptoSubscription', function () {
 
       describe('for existing expired subscriber', () => {
         it('sets deadline to duration time starting from block time', async () => {
-          let expirationTimestamp = await mockDuration(subscriber1, duration1)
+          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           let currentTimestamp = expirationTimestamp + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
@@ -311,7 +311,7 @@ describe('CryptoSubscription', function () {
     })
   })
 
-  async function mockDuration(signer: Wallet, duration: number) {
+  async function mockSubscriptionDuration(signer: Wallet, duration: number) {
     let subscriptionTimestamp = (await time.latest()) + 1
 
     await time.setNextBlockTimestamp(subscriptionTimestamp)

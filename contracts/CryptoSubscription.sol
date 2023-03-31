@@ -21,9 +21,9 @@ contract CryptoSubscription is AccessControl {
     uint16 public commissionRate;
     uint16 public discountRate;
 
-    mapping(uint16 => uint16) private _plans;
-    mapping(address => uint32) private _subscribers;
-    mapping(string => address) private _promoCodes;
+    mapping(uint16 => uint16) private _plans; // duration => cost
+    mapping(address => uint32) private _subscriptions; // subscriber => deadline
+    mapping(string => address) private _promoCodes; // promo code => owner
 
     constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -31,8 +31,8 @@ contract CryptoSubscription is AccessControl {
         commissionRate = _commissionRate;
         discountRate = _discountRate;
 
-        uint planLength = planDurations.length;
-        for (uint i = 0; i < planLength; i++) {
+        uint length = planDurations.length;
+        for (uint i = 0; i < length; i++) {
             _plans[planDurations[i]] = planCosts[i];
         }
     }
@@ -40,7 +40,7 @@ contract CryptoSubscription is AccessControl {
     // Modifiers
 
     modifier activeSubscriber(address _address) {
-        uint32 currentDeadline = _subscribers[_address];
+        uint32 currentDeadline = _subscriptions[_address];
         if (currentDeadline == 0 || block.timestamp > currentDeadline) revert SubscriptionRequired();
         _;
     }
@@ -56,7 +56,7 @@ contract CryptoSubscription is AccessControl {
     }
 
     function subscriptionDeadline(address _address) public view returns (uint32) {
-        return _subscribers[_address];
+        return _subscriptions[_address];
     }
 
     function promoCodeOwner(string memory promoCode) public view returns (address) {
@@ -122,12 +122,12 @@ contract CryptoSubscription is AccessControl {
     // Private Methods
 
     function _updateDeadline(address _address, uint16 duration) private {
-        uint32 currentDeadline = _subscribers[_address];
+        uint32 currentDeadline = _subscriptions[_address];
 
         if (currentDeadline == 0 || block.timestamp > currentDeadline) {
-            _subscribers[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+            _subscriptions[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
         } else {
-            _subscribers[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+            _subscriptions[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
         }
     }
 
