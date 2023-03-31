@@ -8,11 +8,13 @@ contract CryptoSubscription is AccessControl {
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
     event Whitelist(address indexed _address, uint16 duration);
     event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
+    event SubscriptionWithPromoCode(address indexed subscriber, string promoCode, uint16 duration, uint32 cost);
 
     error InvalidPlan(uint16 duration);
     error EmptyPromoCode();
     error PromoCodeAlreadyExists(string promoCode);
     error SubscriptionRequired();
+    error InvalidPromoCode(string promoCode);
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
     uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
@@ -117,6 +119,25 @@ contract CryptoSubscription is AccessControl {
         _updateDeadline(msg.sender, duration);
 
         emit Subscription(msg.sender, duration, cost);
+    }
+
+    function subscribeWithPromoCode(uint16 duration, string memory promoCode) public {
+        uint16 cost = _plans[duration];
+        address codeOwner = _promoCodes[promoCode];
+
+        if (cost == 0) revert InvalidPlan(duration);
+        if (codeOwner == address(0)) revert InvalidPromoCode(promoCode);
+
+        uint tokenCost = cost * 10 ** _paymentToken.decimals();
+        uint promoCodeOwnerAmount = tokenCost * commissionRate / 1000;
+        uint contractAmount = tokenCost - tokenCost * (commissionRate + discountRate) / 1000;
+
+        _paymentToken.transferFrom(msg.sender, codeOwner, promoCodeOwnerAmount);
+        _paymentToken.transferFrom(msg.sender, address(this), contractAmount);
+
+        _updateDeadline(msg.sender, duration);
+
+        emit SubscriptionWithPromoCode(msg.sender, promoCode, duration, cost);
     }
 
     // Private Methods
