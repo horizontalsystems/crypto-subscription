@@ -111,169 +111,242 @@ describe('CryptoSubscription', function () {
           .withArgs(paymentToken.address, otherPaymentToken.address, other.address, amount)
       })
     })
+  })
+  describe('#updateCommissionRate', () => {
+    let newRate = 0.045
+    let newContractRate = newRate * rateMultiplier
 
-    describe('#updateCommissionRate', () => {
-      let newRate = 0.045
-      let newContractRate = newRate * rateMultiplier
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).updateCommissionRate(newContractRate)).to.be.reverted
+    })
 
-      it('reverts if called by non-moderator role', async () => {
-        await expect(contract.connect(other).updateCommissionRate(newContractRate)).to.be.reverted
-      })
+    it('changes commission rate', async () => {
+      await contract.connect(moderator).updateCommissionRate(newContractRate)
+      expect(await contract.commissionRate()).to.eq(newContractRate)
+    })
+  })
 
-      it('changes commission rate', async () => {
-        await contract.connect(moderator).updateCommissionRate(newContractRate)
-        expect(await contract.commissionRate()).to.eq(newContractRate)
+  describe('#updateDiscountRate', () => {
+    let newRate = 0.035
+    let newContractRate = newRate * rateMultiplier
+
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).updateDiscountRate(newContractRate)).to.be.reverted
+    })
+
+    it('changes discount rate', async () => {
+      await contract.connect(moderator).updateDiscountRate(newContractRate)
+      expect(await contract.discountRate()).to.eq(newContractRate)
+    })
+  })
+
+  describe('#updatePlans', () => {
+    let updatedDurations = [duration1, duration2, 60]
+    let updatedCosts = [400, 0, 700]
+    let invalidDurations = [duration1, duration2, 0]
+    let expectedDurations = [duration1, duration3, 60]
+    let expectedCosts = [400, cost3, 700]
+
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
+    })
+
+    it('reverts if called with zero duration', async () => {
+      await expect(contract.connect(moderator).updatePlans(invalidDurations, updatedCosts)).to.be.revertedWithCustomError(
+        contract,
+        'ZeroDuration'
+      )
+    })
+
+    it('merges current plans with provided ones', async () => {
+      await contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)
+      expect(await contract.plans()).to.deep.eq([expectedDurations, expectedCosts])
+    })
+  })
+
+  describe('#whitelist', () => {
+    let duration = 15
+
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).whitelist(subscriber1.address, duration)).to.be.reverted
+    })
+
+    it('emits event on whitelist', async () => {
+      await expect(contract.connect(moderator).whitelist(subscriber1.address, duration))
+        .to.emit(contract, 'Whitelist')
+        .withArgs(subscriber1.address, duration)
+    })
+
+    describe('for new subscriber', () => {
+      it('sets deadline to duration time starting from block time', async () => {
+        let currentTimestamp = (await time.latest()) + 1
+        await time.setNextBlockTimestamp(currentTimestamp)
+
+        await contract.connect(moderator).whitelist(subscriber1.address, duration)
+
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
       })
     })
 
-    describe('#updateDiscountRate', () => {
-      let newRate = 0.035
-      let newContractRate = newRate * rateMultiplier
+    describe('for existing non-expired subscriber', () => {
+      it('adds duration to deadline', async () => {
+        let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
+        await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-      it('reverts if called by non-moderator role', async () => {
-        await expect(contract.connect(other).updateDiscountRate(newContractRate)).to.be.reverted
-      })
+        await contract.connect(moderator).whitelist(subscriber1.address, duration)
 
-      it('changes discount rate', async () => {
-        await contract.connect(moderator).updateDiscountRate(newContractRate)
-        expect(await contract.discountRate()).to.eq(newContractRate)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration))
       })
     })
 
-    describe('#updatePlans', () => {
-      let updatedDurations = [duration1, duration2, 60]
-      let updatedCosts = [400, 0, 700]
-      let invalidDurations = [duration1, duration2, 0]
-      let expectedDurations = [duration1, duration3, 60]
-      let expectedCosts = [400, cost3, 700]
+    describe('for existing expired subscriber', () => {
+      it('sets deadline to duration time starting from block time', async () => {
+        let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
+        let currentTimestamp = expirationTimestamp + 1
+        await time.setNextBlockTimestamp(currentTimestamp)
 
-      it('reverts if called by non-moderator role', async () => {
-        await expect(contract.connect(other).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
+        await contract.connect(moderator).whitelist(subscriber1.address, duration)
+
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
+      })
+    })
+  })
+
+  describe('#addPromoCode', () => {
+    let promoCode = 'Promo Code'
+
+    describe('for active subscriber', () => {
+      beforeEach(async () => {
+        await mockSubscriptionDuration(subscriber1, 30)
       })
 
-      it('reverts if called with zero duration', async () => {
-        await expect(contract.connect(moderator).updatePlans(invalidDurations, updatedCosts)).to.be.revertedWithCustomError(contract, 'ZeroDuration')
+      it('reverts if promo code is empty', async () => {
+        await expect(contract.connect(subscriber1).addPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
       })
 
-      it('merges current plans with provided ones', async () => {
-        await contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)
-        expect(await contract.plans()).to.deep.eq([expectedDurations, expectedCosts])
+      it('reverts if promo code does already exist', async () => {
+        await contract.connect(subscriber1).addPromoCode(promoCode)
+
+        await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+          .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
+          .withArgs(promoCode)
+      })
+
+      it('adds promo code referencing caller address', async () => {
+        await contract.connect(subscriber1).addPromoCode(promoCode)
+
+        expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
+      })
+
+      it('emits event on addition', async () => {
+        await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+          .to.emit(contract, 'PromoCodeAddition')
+          .withArgs(subscriber1.address, promoCode)
       })
     })
 
-    describe('#whitelist', () => {
-      let duration = 15
-
-      it('reverts if called by non-moderator role', async () => {
-        await expect(contract.connect(other).whitelist(subscriber1.address, duration)).to.be.reverted
+    describe('for inactive subscriber', () => {
+      it('reverts if caller has no active subscription', async () => {
+        await expect(contract.connect(subscriber1).addPromoCode(promoCode)).to.be.revertedWithCustomError(contract, 'SubscriptionRequired')
       })
+    })
+  })
 
-      it('emits event on whitelist', async () => {
-        await expect(contract.connect(moderator).whitelist(subscriber1.address, duration))
-          .to.emit(contract, 'Whitelist')
-          .withArgs(subscriber1.address, duration)
-      })
+  describe('#subscribe', () => {
+    it('reverts if plan does not exist', async () => {
+      let invalidDuration = 20
+      await expect(contract.connect(subscriber1).subscribe(invalidDuration))
+        .to.be.revertedWithCustomError(contract, 'InvalidPlan')
+        .withArgs(invalidDuration)
+    })
 
-      describe('for new subscriber', () => {
-        it('sets deadline to duration time starting from block time', async () => {
-          let currentTimestamp = (await time.latest()) + 1
-          await time.setNextBlockTimestamp(currentTimestamp)
+    it('transfers payment tokens from subscriber to contract address', async () => {
+      await contract.connect(subscriber1).subscribe(duration1)
 
-          await contract.connect(moderator).whitelist(subscriber1.address, duration)
+      expect(paymentToken.transferFrom).to.have.been.calledOnceWith(
+        subscriber1.address,
+        contract.address,
+        toTokenAmount(cost1, paymentTokenDecimals)
+      )
+    })
 
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
-        })
-      })
+    it('emits event on subscription', async () => {
+      await expect(contract.connect(subscriber1).subscribe(duration1))
+        .to.emit(contract, 'Subscription')
+        .withArgs(subscriber1.address, duration1, cost1)
+    })
 
-      describe('for existing non-expired subscriber', () => {
-        it('adds duration to deadline', async () => {
-          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
-          await time.setNextBlockTimestamp(expirationTimestamp - 1)
+    describe('for new subscriber', () => {
+      it('sets deadline to duration time starting from block time', async () => {
+        let currentTimestamp = (await time.latest()) + 1
+        await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(moderator).whitelist(subscriber1.address, duration)
+        await contract.connect(subscriber1).subscribe(duration1)
 
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration))
-        })
-      })
-
-      describe('for existing expired subscriber', () => {
-        it('sets deadline to duration time starting from block time', async () => {
-          let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
-          let currentTimestamp = expirationTimestamp + 1
-          await time.setNextBlockTimestamp(currentTimestamp)
-
-          await contract.connect(moderator).whitelist(subscriber1.address, duration)
-
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
-        })
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
       })
     })
 
-    describe('#addPromoCode', () => {
+    describe('for existing non-expired subscriber', () => {
+      it('adds duration to deadline', async () => {
+        let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
+        await time.setNextBlockTimestamp(expirationTimestamp - 1)
+
+        await contract.connect(subscriber1).subscribe(duration2)
+
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
+      })
+    })
+
+    describe('for existing expired subscriber', () => {
+      it('sets deadline to duration time starting from block time', async () => {
+        let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
+        let currentTimestamp = expirationTimestamp + 1
+        await time.setNextBlockTimestamp(currentTimestamp)
+
+        await contract.connect(subscriber1).subscribe(duration2)
+
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
+      })
+    })
+  })
+
+  describe('#subscribeWithPromoCode', () => {
+    describe('with valid promo code', () => {
       let promoCode = 'Promo Code'
 
-      describe('for active subscriber', () => {
-        beforeEach(async () => {
-          await mockSubscriptionDuration(subscriber1, 30)
-        })
-
-        it('reverts if promo code is empty', async () => {
-          await expect(contract.connect(subscriber1).addPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
-        })
-
-        it('reverts if promo code does already exist', async () => {
-          await contract.connect(subscriber1).addPromoCode(promoCode)
-
-          await expect(contract.connect(subscriber1).addPromoCode(promoCode))
-            .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
-            .withArgs(promoCode)
-        })
-
-        it('adds promo code referencing caller address', async () => {
-          await contract.connect(subscriber1).addPromoCode(promoCode)
-
-          expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
-        })
-
-        it('emits event on addition', async () => {
-          await expect(contract.connect(subscriber1).addPromoCode(promoCode))
-            .to.emit(contract, 'PromoCodeAddition')
-            .withArgs(subscriber1.address, promoCode)
-        })
+      beforeEach(async () => {
+        await mockSubscriptionDuration(promoCodeOwner, 30)
+        await contract.connect(promoCodeOwner).addPromoCode(promoCode)
       })
 
-      describe('for inactive subscriber', () => {
-        it('reverts if caller has no active subscription', async () => {
-          await expect(contract.connect(subscriber1).addPromoCode(promoCode)).to.be.revertedWithCustomError(
-            contract,
-            'SubscriptionRequired'
-          )
-        })
-      })
-    })
-
-    describe('#subscribe', () => {
       it('reverts if plan does not exist', async () => {
         let invalidDuration = 20
-        await expect(contract.connect(subscriber1).subscribe(invalidDuration))
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(invalidDuration, promoCode))
           .to.be.revertedWithCustomError(contract, 'InvalidPlan')
           .withArgs(invalidDuration)
       })
 
-      it('transfers payment tokens from subscriber to contract address', async () => {
-        await contract.connect(subscriber1).subscribe(duration1)
+      it('transfers payment tokens to contract and promo code owner', async () => {
+        await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
 
-        expect(paymentToken.transferFrom).to.have.been.calledOnceWith(
+        expect(paymentToken.transferFrom).to.have.been.calledTwice
+        expect(paymentToken.transferFrom.atCall(0)).to.have.been.calledWith(
+          subscriber1.address,
+          promoCodeOwner.address,
+          toTokenAmount(cost1 * commissionRate, paymentTokenDecimals)
+        )
+        expect(paymentToken.transferFrom.atCall(1)).to.have.been.calledWith(
           subscriber1.address,
           contract.address,
-          toTokenAmount(cost1, paymentTokenDecimals)
+          toTokenAmount(cost1 - cost1 * (commissionRate + discountRate), paymentTokenDecimals)
         )
       })
 
       it('emits event on subscription', async () => {
-        await expect(contract.connect(subscriber1).subscribe(duration1))
-          .to.emit(contract, 'Subscription')
-          .withArgs(subscriber1.address, duration1, cost1)
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode))
+          .to.emit(contract, 'SubscriptionWithPromoCode')
+          .withArgs(subscriber1.address, promoCode, duration1, cost1)
       })
 
       describe('for new subscriber', () => {
@@ -281,7 +354,7 @@ describe('CryptoSubscription', function () {
           let currentTimestamp = (await time.latest()) + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribe(duration1)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
         })
@@ -292,7 +365,7 @@ describe('CryptoSubscription', function () {
           let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-          await contract.connect(subscriber1).subscribe(duration2)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
         })
@@ -304,94 +377,20 @@ describe('CryptoSubscription', function () {
           let currentTimestamp = expirationTimestamp + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribe(duration2)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
         })
       })
     })
 
-    describe('#subscribeWithPromoCode', () => {
-      describe('with valid promo code', () => {
-        let promoCode = 'Promo Code'
+    describe('with invalid promo code', () => {
+      let invalidPromoCode = 'Invalid promo code'
 
-        beforeEach(async () => {
-          await mockSubscriptionDuration(promoCodeOwner, 30)
-          await contract.connect(promoCodeOwner).addPromoCode(promoCode)
-        })
-
-        it('reverts if plan does not exist', async () => {
-          let invalidDuration = 20
-          await expect(contract.connect(subscriber1).subscribeWithPromoCode(invalidDuration, promoCode))
-            .to.be.revertedWithCustomError(contract, 'InvalidPlan')
-            .withArgs(invalidDuration)
-        })
-
-        it('transfers payment tokens to contract and promo code owner', async () => {
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
-
-          expect(paymentToken.transferFrom).to.have.been.calledTwice
-          expect(paymentToken.transferFrom.atCall(0)).to.have.been.calledWith(
-            subscriber1.address,
-            promoCodeOwner.address,
-            toTokenAmount(cost1 * commissionRate, paymentTokenDecimals)
-          )
-          expect(paymentToken.transferFrom.atCall(1)).to.have.been.calledWith(
-            subscriber1.address,
-            contract.address,
-            toTokenAmount(cost1 - cost1 * (commissionRate + discountRate), paymentTokenDecimals)
-          )
-        })
-
-        it('emits event on subscription', async () => {
-          await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode))
-            .to.emit(contract, 'SubscriptionWithPromoCode')
-            .withArgs(subscriber1.address, promoCode, duration1, cost1)
-        })
-
-        describe('for new subscriber', () => {
-          it('sets deadline to duration time starting from block time', async () => {
-            let currentTimestamp = (await time.latest()) + 1
-            await time.setNextBlockTimestamp(currentTimestamp)
-
-            await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
-
-            expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
-          })
-        })
-
-        describe('for existing non-expired subscriber', () => {
-          it('adds duration to deadline', async () => {
-            let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
-            await time.setNextBlockTimestamp(expirationTimestamp - 1)
-
-            await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
-
-            expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
-          })
-        })
-
-        describe('for existing expired subscriber', () => {
-          it('sets deadline to duration time starting from block time', async () => {
-            let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
-            let currentTimestamp = expirationTimestamp + 1
-            await time.setNextBlockTimestamp(currentTimestamp)
-
-            await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
-
-            expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
-          })
-        })
-      })
-
-      describe('with invalid promo code', () => {
-        let invalidPromoCode = 'Invalid promo code'
-
-        it('reverts if promo code does not exist', async () => {
-          await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, invalidPromoCode))
-            .to.be.revertedWithCustomError(contract, 'InvalidPromoCode')
-            .withArgs(invalidPromoCode)
-        })
+      it('reverts if promo code does not exist', async () => {
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, invalidPromoCode))
+          .to.be.revertedWithCustomError(contract, 'InvalidPromoCode')
+          .withArgs(invalidPromoCode)
       })
     })
   })
