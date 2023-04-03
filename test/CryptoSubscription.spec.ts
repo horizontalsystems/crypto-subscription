@@ -72,12 +72,8 @@ describe('CryptoSubscription', function () {
       expect(await contract.discountRate()).to.eq(discountRate * rateMultiplier)
     })
 
-    describe('set initial plan costs', () => {
-      for (let i in durations) {
-        it(`sets ${durations[i]}-day plan cost to provided value ${costs[i]}`, async () => {
-          expect(await contract.planCost(durations[i])).to.eq(costs[i])
-        })
-      }
+    it('sets initial plans', async () => {
+      expect(await contract.plans()).to.deep.eq([durations, costs])
     })
   })
 
@@ -147,23 +143,21 @@ describe('CryptoSubscription', function () {
     describe('#updatePlans', () => {
       let updatedDurations = [duration1, duration2, 60]
       let updatedCosts = [400, 0, 700]
-      let expectedDurations = [duration1, duration2, duration3, 60]
-      let expectedCosts = [400, 0, cost3, 700]
+      let invalidDurations = [duration1, duration2, 0]
+      let expectedDurations = [duration1, duration3, 60]
+      let expectedCosts = [400, cost3, 700]
 
       it('reverts if called by non-moderator role', async () => {
         await expect(contract.connect(other).updatePlans(updatedDurations, updatedCosts)).to.be.reverted
       })
 
-      describe('merges current plans with provided ones', () => {
-        beforeEach(async () => {
-          await contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)
-        })
+      it('reverts if called with zero duration', async () => {
+        await expect(contract.connect(moderator).updatePlans(invalidDurations, updatedCosts)).to.be.revertedWithCustomError(contract, 'ZeroDuration')
+      })
 
-        for (let i in expectedDurations) {
-          it(`results in ${expectedDurations[i]}-day plan cost equals ${expectedCosts[i]}`, async () => {
-            expect(await contract.planCost(expectedDurations[i])).to.eq(expectedCosts[i])
-          })
-        }
+      it('merges current plans with provided ones', async () => {
+        await contract.connect(moderator).updatePlans(updatedDurations, updatedCosts)
+        expect(await contract.plans()).to.deep.eq([expectedDurations, expectedCosts])
       })
     })
 

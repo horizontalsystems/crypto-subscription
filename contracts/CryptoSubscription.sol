@@ -5,6 +5,11 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract CryptoSubscription is AccessControl {
+    struct Plan {
+        uint8 index;
+        uint16 cost;
+    }
+
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
     event Whitelist(address indexed _address, uint16 duration);
     event PromoCodeAddition(address indexed owner, string promoCode);
@@ -16,6 +21,7 @@ contract CryptoSubscription is AccessControl {
     error PromoCodeAlreadyExists(string promoCode);
     error SubscriptionRequired();
     error InvalidPromoCode(string promoCode);
+    error ZeroDuration();
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
     uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
@@ -24,7 +30,9 @@ contract CryptoSubscription is AccessControl {
     uint16 public commissionRate;
     uint16 public discountRate;
 
-    mapping(uint16 => uint16) private _plans; // duration => cost
+    uint16[] private _planIndex;
+    mapping(uint16 => Plan) private _plans; // duration => cost
+
     mapping(address => uint32) private _subscriptions; // subscriber => deadline
     mapping(string => address) private _promoCodes; // promo code => owner
 
@@ -36,7 +44,13 @@ contract CryptoSubscription is AccessControl {
 
         uint length = planDurations.length;
         for (uint i = 0; i < length; i++) {
-            _plans[planDurations[i]] = planCosts[i];
+            uint16 duration = planDurations[i];
+
+            Plan storage plan = _plans[duration];
+            plan.index = uint8(i);
+            plan.cost = planCosts[i];
+
+            _planIndex.push(duration);
         }
     }
 
@@ -54,8 +68,19 @@ contract CryptoSubscription is AccessControl {
         return address(_paymentToken);
     }
 
-    function planCost(uint16 duration) public view returns (uint16) {
-        return _plans[duration];
+    function plans() public view returns (uint16[] memory, uint16[] memory) {
+        uint length = _planIndex.length;
+
+        uint16[] memory durations = new uint16[](length);
+        uint16[] memory costs = new uint16[](length);
+
+        for (uint i = 0; i < length; i++) {
+            uint16 duration = _planIndex[i];
+            durations[i] = duration;
+            costs[i] = _plans[duration].cost;
+        }
+
+        return (durations, costs);
     }
 
     function subscriptionDeadline(address _address) public view returns (uint32) {
@@ -91,7 +116,28 @@ contract CryptoSubscription is AccessControl {
     function updatePlans(uint16[] calldata durations, uint16[] calldata costs) public onlyRole(MODERATOR_ROLE) {
         uint length = durations.length;
         for (uint i = 0; i < length; i++) {
-            _plans[durations[i]] = costs[i];
+            uint16 duration = durations[i];
+            uint16 cost = costs[i];
+            Plan storage plan = _plans[duration];
+
+            if (duration == 0) revert ZeroDuration();
+
+            if (cost == 0) {
+                uint8 indexToDelete = plan.index;
+                uint16 durationToMove = _planIndex[_planIndex.length - 1];
+                _planIndex[indexToDelete] = durationToMove;
+                _plans[durationToMove].index = indexToDelete;
+                _planIndex.pop();
+
+                plan.index = 0;
+                plan.cost = 0;
+            } else if (plan.cost == 0) {
+                plan.index = uint8(_planIndex.length);
+                plan.cost = cost;
+                _planIndex.push(duration);
+            } else {
+                plan.cost = cost;
+            }
         }
     }
 
@@ -114,7 +160,7 @@ contract CryptoSubscription is AccessControl {
     // Subscriber Actions
 
     function subscribe(uint16 duration) public {
-        uint16 cost = _plans[duration];
+        uint16 cost = _plans[duration].cost;
 
         if (cost == 0) revert InvalidPlan(duration);
 
@@ -125,7 +171,7 @@ contract CryptoSubscription is AccessControl {
     }
 
     function subscribeWithPromoCode(uint16 duration, string memory promoCode) public {
-        uint16 cost = _plans[duration];
+        uint16 cost = _plans[duration].cost;
         address codeOwner = _promoCodes[promoCode];
 
         if (cost == 0) revert InvalidPlan(duration);
