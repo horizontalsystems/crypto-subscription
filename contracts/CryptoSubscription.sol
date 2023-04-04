@@ -91,6 +91,11 @@ contract CryptoSubscription is AccessControl {
         return _promoCodes[promoCode];
     }
 
+    function stateInfo() public view returns (address, uint16, uint16, uint16[] memory, uint16[] memory, bool, bool, uint32) {
+        (uint16[] memory durations, uint16[] memory costs) = plans();
+        return (address(_paymentToken), commissionRate, discountRate, durations, costs, hasRole(MODERATOR_ROLE, msg.sender), hasRole(DEFAULT_ADMIN_ROLE, msg.sender), _subscriptions[msg.sender]);
+    }
+
     // Admin Actions
 
     function changePaymentToken(address _address, address withdrawAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
