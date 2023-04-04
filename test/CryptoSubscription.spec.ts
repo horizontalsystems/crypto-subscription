@@ -140,6 +140,24 @@ describe('CryptoSubscription', function () {
       })
     })
   })
+
+  describe('#withdraw', () => {
+    let amount = toTokenAmount(800, paymentTokenDecimals)
+
+    beforeEach(async () => {
+      paymentToken.balanceOf.whenCalledWith(contract.address).returns(amount)
+    })
+
+    it('reverts if called by non-default admin role', async () => {
+      await expect(contract.connect(moderator).withdraw()).to.be.reverted
+    })
+
+    it('transfers all tokens from contract to owner address', async () => {
+      await contract.connect(owner).withdraw()
+      expect(paymentToken.transfer).to.have.been.calledOnceWith(owner.address, amount)
+    })
+  })
+
   describe('#updateCommissionRate', () => {
     let newRate = 0.045
     let newContractRate = newRate * rateMultiplier

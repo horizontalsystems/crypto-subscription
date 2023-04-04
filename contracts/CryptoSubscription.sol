@@ -112,6 +112,10 @@ contract CryptoSubscription is AccessControl {
         emit PaymentTokenChange(oldAddress, _address, withdrawAddress, balance);
     }
 
+    function withdraw() public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _paymentToken.transfer(msg.sender, _paymentToken.balanceOf(address(this)));
+    }
+
     // Moderator Actions
 
     function updateCommissionRate(uint16 newRate) public onlyRole(MODERATOR_ROLE) {
