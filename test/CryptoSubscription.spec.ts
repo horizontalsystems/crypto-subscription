@@ -78,45 +78,30 @@ describe('CryptoSubscription', function () {
   })
 
   describe('#stateInfo', () => {
-    it('returns state info for admin', async () => {
-      expect(await contract.connect(owner).stateInfo()).to.deep.eq([
+    it('returns state info', async () => {
+      expect(await contract.stateInfo()).to.deep.eq([
         paymentToken.address,
         commissionRate * rateMultiplier,
         discountRate * rateMultiplier,
         durations,
         costs,
-        false,
-        true,
-        0,
       ])
     })
+  })
 
-    it('returns state info for moderator', async () => {
-      expect(await contract.connect(moderator).stateInfo()).to.deep.eq([
-        paymentToken.address,
-        commissionRate * rateMultiplier,
-        discountRate * rateMultiplier,
-        durations,
-        costs,
-        true,
-        false,
-        0,
-      ])
+  describe('#addressInfo', () => {
+    it('returns address info for admin', async () => {
+      expect(await contract.addressInfo(owner.address)).to.deep.eq([false, true, 0])
     })
 
-    it('returns state info for subscriber', async () => {
+    it('returns address info for moderator', async () => {
+      expect(await contract.addressInfo(moderator.address)).to.deep.eq([true, false, 0])
+    })
+
+    it('returns address info for subscriber', async () => {
       let deadline = await mockSubscriptionDuration(subscriber1, 20)
 
-      expect(await contract.connect(subscriber1).stateInfo()).to.deep.eq([
-        paymentToken.address,
-        commissionRate * rateMultiplier,
-        discountRate * rateMultiplier,
-        durations,
-        costs,
-        false,
-        false,
-        deadline,
-      ])
+      expect(await contract.addressInfo(subscriber1.address)).to.deep.eq([false, false, deadline])
     })
   })
 
