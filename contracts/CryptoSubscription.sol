@@ -34,7 +34,8 @@ contract CryptoSubscription is AccessControl {
     mapping(uint16 => Plan) private _plans; // duration => cost
 
     mapping(address => uint32) private _subscriptions; // subscriber => deadline
-    mapping(string => address) private _promoCodes; // promo code => owner
+    mapping(address => string) private _promoCodes; // owner => promo code
+    mapping(string => address) private _promoCodesOwners; // promo code => owner
 
     constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -87,8 +88,12 @@ contract CryptoSubscription is AccessControl {
         return _subscriptions[_address];
     }
 
-    function promoCodeOwner(string memory promoCode) public view returns (address) {
-        return _promoCodes[promoCode];
+    function promoCode(address _address) public view returns (string memory) {
+        return _promoCodes[_address];
+    }
+
+    function promoCodeOwner(string memory _promoCode) public view returns (address) {
+        return _promoCodesOwners[_promoCode];
     }
 
     function stateInfo() public view returns (address, uint16, uint16, uint16[] memory, uint16[] memory) {
@@ -161,13 +166,14 @@ contract CryptoSubscription is AccessControl {
 
     // Promoter Actions
 
-    function addPromoCode(string memory promoCode) public activeSubscriber(msg.sender) {
-        if (bytes(promoCode).length == 0) revert EmptyPromoCode();
-        if (_promoCodes[promoCode] != address(0)) revert PromoCodeAlreadyExists(promoCode);
+    function setPromoCode(string memory _promoCode) public activeSubscriber(msg.sender) {
+        if (bytes(_promoCode).length == 0) revert EmptyPromoCode();
+        if (_promoCodesOwners[_promoCode] != address(0)) revert PromoCodeAlreadyExists(_promoCode);
 
-        _promoCodes[promoCode] = msg.sender;
+        _promoCodes[msg.sender] = _promoCode;
+        _promoCodesOwners[_promoCode] = msg.sender;
 
-        emit PromoCodeAddition(msg.sender, promoCode);
+        emit PromoCodeAddition(msg.sender, _promoCode);
     }
 
     // Subscriber Actions
@@ -183,12 +189,12 @@ contract CryptoSubscription is AccessControl {
         emit Subscription(msg.sender, duration, cost);
     }
 
-    function subscribeWithPromoCode(uint16 duration, string memory promoCode) public {
+    function subscribeWithPromoCode(uint16 duration, string memory _promoCode) public {
         uint16 cost = _plans[duration].cost;
-        address codeOwner = _promoCodes[promoCode];
+        address codeOwner = _promoCodesOwners[_promoCode];
 
         if (cost == 0) revert InvalidPlan(duration);
-        if (codeOwner == address(0)) revert InvalidPromoCode(promoCode);
+        if (codeOwner == address(0)) revert InvalidPromoCode(_promoCode);
 
         uint tokenCost = cost * 10 ** _paymentToken.decimals();
         uint promoCodeOwnerAmount = tokenCost * commissionRate / 1000;
@@ -199,7 +205,7 @@ contract CryptoSubscription is AccessControl {
 
         _updateDeadline(msg.sender, duration);
 
-        emit SubscriptionWithPromoCode(msg.sender, promoCode, duration, cost);
+        emit SubscriptionWithPromoCode(msg.sender, _promoCode, duration, cost);
     }
 
     // Private Methods

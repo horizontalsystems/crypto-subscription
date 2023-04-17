@@ -258,7 +258,7 @@ describe('CryptoSubscription', function () {
     })
   })
 
-  describe('#addPromoCode', () => {
+  describe.only('#setPromoCode', () => {
     let promoCode = 'Promo Code'
 
     describe('for active subscriber', () => {
@@ -267,33 +267,66 @@ describe('CryptoSubscription', function () {
       })
 
       it('reverts if promo code is empty', async () => {
-        await expect(contract.connect(subscriber1).addPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
+        await expect(contract.connect(subscriber1).setPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
       })
 
       it('reverts if promo code does already exist', async () => {
-        await contract.connect(subscriber1).addPromoCode(promoCode)
+        await contract.connect(subscriber1).setPromoCode(promoCode)
 
-        await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+        await expect(contract.connect(subscriber1).setPromoCode(promoCode))
           .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
           .withArgs(promoCode)
       })
 
       it('adds promo code referencing caller address', async () => {
-        await contract.connect(subscriber1).addPromoCode(promoCode)
+        await contract.connect(subscriber1).setPromoCode(promoCode)
 
         expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
       })
 
+      it('sets promo code for address', async () => {
+        await contract.connect(subscriber1).setPromoCode(promoCode)
+
+        expect(await contract.promoCode(subscriber1.address)).to.eq(promoCode)
+      })
+
       it('emits event on addition', async () => {
-        await expect(contract.connect(subscriber1).addPromoCode(promoCode))
+        await expect(contract.connect(subscriber1).setPromoCode(promoCode))
           .to.emit(contract, 'PromoCodeAddition')
           .withArgs(subscriber1.address, promoCode)
+      })
+
+      describe('update promo code', () => {
+        let oldPromoCode = 'Old Promo Code'
+        let newPromoCode = 'New Promo Code'
+
+        beforeEach(async () => {
+          await contract.connect(subscriber1).setPromoCode(oldPromoCode)
+        })
+
+        it('adds new promo code referencing caller address', async () => {
+          await contract.connect(subscriber1).setPromoCode(newPromoCode)
+
+          expect(await contract.promoCodeOwner(newPromoCode)).to.eq(subscriber1.address)
+        })
+
+        it('keeps old promo code referencing caller address', async () => {
+          await contract.connect(subscriber1).setPromoCode(newPromoCode)
+
+          expect(await contract.promoCodeOwner(oldPromoCode)).to.eq(subscriber1.address)
+        })
+
+        it('sets new promo code for address', async () => {
+          await contract.connect(subscriber1).setPromoCode(newPromoCode)
+
+          expect(await contract.promoCode(subscriber1.address)).to.eq(newPromoCode)
+        })
       })
     })
 
     describe('for inactive subscriber', () => {
       it('reverts if caller has no active subscription', async () => {
-        await expect(contract.connect(subscriber1).addPromoCode(promoCode)).to.be.revertedWithCustomError(contract, 'SubscriptionRequired')
+        await expect(contract.connect(subscriber1).setPromoCode(promoCode)).to.be.revertedWithCustomError(contract, 'SubscriptionRequired')
       })
     })
   })
@@ -363,7 +396,7 @@ describe('CryptoSubscription', function () {
 
       beforeEach(async () => {
         await mockSubscriptionDuration(promoCodeOwner, 30)
-        await contract.connect(promoCodeOwner).addPromoCode(promoCode)
+        await contract.connect(promoCodeOwner).setPromoCode(promoCode)
       })
 
       it('reverts if plan does not exist', async () => {
