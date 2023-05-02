@@ -15,9 +15,6 @@ describe('CryptoSubscription', function () {
 
   let rateMultiplier = 1000
 
-  let commissionRate = 0.025
-  let discountRate = 0.015
-
   let duration1 = 30
   let cost1 = 200
   let duration2 = 90
@@ -42,13 +39,7 @@ describe('CryptoSubscription', function () {
     paymentToken.decimals.whenCalledWith().returns(paymentTokenDecimals)
 
     const CryptoSubscription = await ethers.getContractFactory('CryptoSubscription', { signer: owner })
-    contract = await CryptoSubscription.deploy(
-      paymentToken.address,
-      commissionRate * rateMultiplier,
-      discountRate * rateMultiplier,
-      durations,
-      costs
-    )
+    contract = await CryptoSubscription.deploy(paymentToken.address, durations, costs)
 
     let moderatorRole = await contract.MODERATOR_ROLE()
     await contract.grantRole(moderatorRole, moderator.address)
@@ -64,14 +55,6 @@ describe('CryptoSubscription', function () {
       expect(await contract.paymentToken()).to.eq(paymentToken.address)
     })
 
-    it('sets commission rate to provided one', async () => {
-      expect(await contract.commissionRate()).to.eq(commissionRate * rateMultiplier)
-    })
-
-    it('sets discount rate to provided one', async () => {
-      expect(await contract.discountRate()).to.eq(discountRate * rateMultiplier)
-    })
-
     it('sets initial plans', async () => {
       expect(await contract.plans()).to.deep.eq([durations, costs])
     })
@@ -79,13 +62,7 @@ describe('CryptoSubscription', function () {
 
   describe('#stateInfo', () => {
     it('returns state info', async () => {
-      expect(await contract.stateInfo()).to.deep.eq([
-        paymentToken.address,
-        commissionRate * rateMultiplier,
-        discountRate * rateMultiplier,
-        durations,
-        costs,
-      ])
+      expect(await contract.stateInfo()).to.deep.eq([paymentToken.address, durations, costs])
     })
   })
 
@@ -155,34 +132,6 @@ describe('CryptoSubscription', function () {
     it('transfers all tokens from contract to owner address', async () => {
       await contract.connect(owner).withdraw()
       expect(paymentToken.transfer).to.have.been.calledOnceWith(owner.address, amount)
-    })
-  })
-
-  describe('#updateCommissionRate', () => {
-    let newRate = 0.045
-    let newContractRate = newRate * rateMultiplier
-
-    it('reverts if called by non-moderator role', async () => {
-      await expect(contract.connect(other).updateCommissionRate(newContractRate)).to.be.reverted
-    })
-
-    it('changes commission rate', async () => {
-      await contract.connect(moderator).updateCommissionRate(newContractRate)
-      expect(await contract.commissionRate()).to.eq(newContractRate)
-    })
-  })
-
-  describe('#updateDiscountRate', () => {
-    let newRate = 0.035
-    let newContractRate = newRate * rateMultiplier
-
-    it('reverts if called by non-moderator role', async () => {
-      await expect(contract.connect(other).updateDiscountRate(newContractRate)).to.be.reverted
-    })
-
-    it('changes discount rate', async () => {
-      await contract.connect(moderator).updateDiscountRate(newContractRate)
-      expect(await contract.discountRate()).to.eq(newContractRate)
     })
   })
 
@@ -258,76 +207,99 @@ describe('CryptoSubscription', function () {
     })
   })
 
-  describe.only('#setPromoCode', () => {
-    let promoCode = 'Promo Code'
+  describe('#setPromoCode', () => {
+    let promoCodeName = 'Promo Code'
+    let commissionRate = 0.025 * rateMultiplier
+    let discountRate = 0.015 * rateMultiplier
+    let duration = 30
 
-    describe('for active subscriber', () => {
-      beforeEach(async () => {
-        await mockSubscriptionDuration(subscriber1, 30)
-      })
-
-      it('reverts if promo code is empty', async () => {
-        await expect(contract.connect(subscriber1).setPromoCode('')).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
-      })
-
-      it('reverts if promo code does already exist', async () => {
-        await contract.connect(subscriber1).setPromoCode(promoCode)
-
-        await expect(contract.connect(subscriber1).setPromoCode(promoCode))
-          .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
-          .withArgs(promoCode)
-      })
-
-      it('adds promo code referencing caller address', async () => {
-        await contract.connect(subscriber1).setPromoCode(promoCode)
-
-        expect(await contract.promoCodeOwner(promoCode)).to.eq(subscriber1.address)
-      })
-
-      it('sets promo code for address', async () => {
-        await contract.connect(subscriber1).setPromoCode(promoCode)
-
-        expect(await contract.promoCode(subscriber1.address)).to.eq(promoCode)
-      })
-
-      it('emits event on addition', async () => {
-        await expect(contract.connect(subscriber1).setPromoCode(promoCode))
-          .to.emit(contract, 'PromoCodeAddition')
-          .withArgs(subscriber1.address, promoCode)
-      })
-
-      describe('update promo code', () => {
-        let oldPromoCode = 'Old Promo Code'
-        let newPromoCode = 'New Promo Code'
-
-        beforeEach(async () => {
-          await contract.connect(subscriber1).setPromoCode(oldPromoCode)
-        })
-
-        it('adds new promo code referencing caller address', async () => {
-          await contract.connect(subscriber1).setPromoCode(newPromoCode)
-
-          expect(await contract.promoCodeOwner(newPromoCode)).to.eq(subscriber1.address)
-        })
-
-        it('keeps old promo code referencing caller address', async () => {
-          await contract.connect(subscriber1).setPromoCode(newPromoCode)
-
-          expect(await contract.promoCodeOwner(oldPromoCode)).to.eq(subscriber1.address)
-        })
-
-        it('sets new promo code for address', async () => {
-          await contract.connect(subscriber1).setPromoCode(newPromoCode)
-
-          expect(await contract.promoCode(subscriber1.address)).to.eq(newPromoCode)
-        })
-      })
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).setPromoCode(subscriber1.address, promoCodeName, commissionRate, discountRate, duration)).to.be
+        .reverted
     })
 
-    describe('for inactive subscriber', () => {
-      it('reverts if caller has no active subscription', async () => {
-        await expect(contract.connect(subscriber1).setPromoCode(promoCode)).to.be.revertedWithCustomError(contract, 'SubscriptionRequired')
-      })
+    it('reverts if promo code is empty', async () => {
+      await expect(
+        contract.connect(moderator).setPromoCode(subscriber1.address, '', commissionRate, discountRate, duration)
+      ).to.be.revertedWithCustomError(contract, 'EmptyPromoCode')
+    })
+
+    it('reverts if promo code does already exist', async () => {
+      await contract.connect(moderator).setPromoCode(subscriber1.address, promoCodeName, commissionRate, discountRate, duration)
+
+      await expect(contract.connect(moderator).setPromoCode(subscriber2.address, promoCodeName, commissionRate, discountRate, duration))
+        .to.be.revertedWithCustomError(contract, 'PromoCodeAlreadyExists')
+        .withArgs(promoCodeName)
+    })
+
+    it('adds promo codes for provided data', async () => {
+      let promoCodeName2 = 'Promo Code 2'
+      let commissionRate2 = 0.05 * rateMultiplier
+      let discountRate2 = 0.03 * rateMultiplier
+      let duration2 = 15
+
+      let promoCodeName3 = 'Promo Code 3'
+      let commissionRate3 = 0.08 * rateMultiplier
+      let discountRate3 = 0.06 * rateMultiplier
+      let duration3 = 45
+
+      let blockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(blockTimestamp)
+      await contract.connect(moderator).setPromoCode(subscriber1.address, promoCodeName, commissionRate, discountRate, duration)
+
+      let blockTimestamp2 = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(blockTimestamp2)
+      await contract.connect(moderator).setPromoCode(subscriber1.address, promoCodeName2, commissionRate2, discountRate2, duration2)
+
+      let blockTimestamp3 = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(blockTimestamp3)
+      await contract.connect(moderator).setPromoCode(subscriber2.address, promoCodeName3, commissionRate3, discountRate3, duration3)
+
+      expect(await contract.promoCodes(subscriber1.address)).to.deep.eq([promoCodeName, promoCodeName2])
+      expect(await contract.promoCodes(subscriber2.address)).to.deep.eq([promoCodeName3])
+
+      let promoCode = await contract.promoCode(promoCodeName)
+      expect(promoCode).to.have.property('_address', subscriber1.address)
+      expect(promoCode).to.have.property('commissionRate', commissionRate)
+      expect(promoCode).to.have.property('discountRate', discountRate)
+      expect(promoCode).to.have.property('deadline', blockTimestamp + dayToSeconds(duration))
+
+      let promoCode2 = await contract.promoCode(promoCodeName2)
+      expect(promoCode2).to.have.property('_address', subscriber1.address)
+      expect(promoCode2).to.have.property('commissionRate', commissionRate2)
+      expect(promoCode2).to.have.property('discountRate', discountRate2)
+      expect(promoCode2).to.have.property('deadline', blockTimestamp2 + dayToSeconds(duration2))
+
+      let promoCode3 = await contract.promoCode(promoCodeName3)
+      expect(promoCode3).to.have.property('_address', subscriber2.address)
+      expect(promoCode3).to.have.property('commissionRate', commissionRate3)
+      expect(promoCode3).to.have.property('discountRate', discountRate3)
+      expect(promoCode3).to.have.property('deadline', blockTimestamp3 + dayToSeconds(duration3))
+
+      let promoCodesSubscriber1 = await contract.promoCodesInfo(subscriber1.address)
+      expect(promoCodesSubscriber1[0]).to.have.property('_address', subscriber1.address)
+      expect(promoCodesSubscriber1[0]).to.have.property('commissionRate', commissionRate)
+      expect(promoCodesSubscriber1[0]).to.have.property('discountRate', discountRate)
+      expect(promoCodesSubscriber1[0]).to.have.property('deadline', blockTimestamp + dayToSeconds(duration))
+      expect(promoCodesSubscriber1[1]).to.have.property('_address', subscriber1.address)
+      expect(promoCodesSubscriber1[1]).to.have.property('commissionRate', commissionRate2)
+      expect(promoCodesSubscriber1[1]).to.have.property('discountRate', discountRate2)
+      expect(promoCodesSubscriber1[1]).to.have.property('deadline', blockTimestamp2 + dayToSeconds(duration2))
+
+      let promoCodesSubscriber2 = await contract.promoCodesInfo(subscriber2.address)
+      expect(promoCodesSubscriber2[0]).to.have.property('_address', subscriber2.address)
+      expect(promoCodesSubscriber2[0]).to.have.property('commissionRate', commissionRate3)
+      expect(promoCodesSubscriber2[0]).to.have.property('discountRate', discountRate3)
+      expect(promoCodesSubscriber2[0]).to.have.property('deadline', blockTimestamp3 + dayToSeconds(duration3))
+    })
+
+    it('emits event on addition', async () => {
+      let blockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(blockTimestamp)
+
+      await expect(contract.connect(moderator).setPromoCode(subscriber1.address, promoCodeName, commissionRate, discountRate, duration))
+        .to.emit(contract, 'PromoCodeAddition')
+        .withArgs(subscriber1.address, promoCodeName, commissionRate, discountRate, blockTimestamp + dayToSeconds(duration))
     })
   })
 
@@ -390,24 +362,28 @@ describe('CryptoSubscription', function () {
     })
   })
 
-  describe('#subscribeWithPromoCode', () => {
-    describe('with valid promo code', () => {
-      let promoCode = 'Promo Code'
+  describe.only('#subscribeWithPromoCode', () => {
+    let promoCodeName = 'Promo Code'
+    let commissionRate = 0.025
+    let discountRate = 0.015
+    let duration = 90
 
+    describe('with valid promo code', () => {
       beforeEach(async () => {
-        await mockSubscriptionDuration(promoCodeOwner, 30)
-        await contract.connect(promoCodeOwner).setPromoCode(promoCode)
+        await contract
+          .connect(moderator)
+          .setPromoCode(promoCodeOwner.address, promoCodeName, commissionRate * rateMultiplier, discountRate * rateMultiplier, duration)
       })
 
       it('reverts if plan does not exist', async () => {
         let invalidDuration = 20
-        await expect(contract.connect(subscriber1).subscribeWithPromoCode(invalidDuration, promoCode))
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(invalidDuration, promoCodeName))
           .to.be.revertedWithCustomError(contract, 'InvalidPlan')
           .withArgs(invalidDuration)
       })
 
       it('transfers payment tokens to contract and promo code owner', async () => {
-        await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
+        await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName)
 
         expect(paymentToken.transferFrom).to.have.been.calledTwice
         expect(paymentToken.transferFrom.atCall(0)).to.have.been.calledWith(
@@ -423,9 +399,9 @@ describe('CryptoSubscription', function () {
       })
 
       it('emits event on subscription', async () => {
-        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode))
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName))
           .to.emit(contract, 'SubscriptionWithPromoCode')
-          .withArgs(subscriber1.address, promoCode, duration1, cost1)
+          .withArgs(subscriber1.address, promoCodeName, duration1, cost1)
       })
 
       describe('for new subscriber', () => {
@@ -433,7 +409,7 @@ describe('CryptoSubscription', function () {
           let currentTimestamp = (await time.latest()) + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCode)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
         })
@@ -444,7 +420,7 @@ describe('CryptoSubscription', function () {
           let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
         })
@@ -456,10 +432,29 @@ describe('CryptoSubscription', function () {
           let currentTimestamp = expirationTimestamp + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCode)
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
 
           expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
         })
+      })
+    })
+
+    describe('with expired promo code', () => {
+      beforeEach(async () => {
+        let blockTimestamp = (await time.latest()) + 1
+        await time.setNextBlockTimestamp(blockTimestamp)
+
+        await contract
+          .connect(moderator)
+          .setPromoCode(promoCodeOwner.address, promoCodeName, commissionRate * rateMultiplier, discountRate * rateMultiplier, duration)
+
+        await time.setNextBlockTimestamp(blockTimestamp + dayToSeconds(duration) + 1)
+      })
+
+      it('reverts if promo code is expired', async () => {
+        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName))
+          .to.be.revertedWithCustomError(contract, 'ExpiredPromoCode')
+          .withArgs(promoCodeName)
       })
     })
 

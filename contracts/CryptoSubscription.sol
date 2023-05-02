@@ -10,38 +10,42 @@ contract CryptoSubscription is AccessControl {
         uint16 cost;
     }
 
+    struct PromoCode {
+        address _address;
+        uint16 commissionRate;
+        uint16 discountRate;
+        uint32 deadline;
+    }
+
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress, address withdrawAddress, uint indexed withdrawAmount);
     event Whitelist(address indexed _address, uint16 duration);
-    event PromoCodeAddition(address indexed owner, string promoCode);
+    event PromoCodeAddition(address indexed _address, string name, uint16 commissionRate, uint16 discountRate, uint32 deadline);
     event Subscription(address indexed subscriber, uint16 duration, uint32 cost);
     event SubscriptionWithPromoCode(address indexed subscriber, string promoCode, uint16 duration, uint32 cost);
 
     error InvalidPlan(uint16 duration);
     error EmptyPromoCode();
     error PromoCodeAlreadyExists(string promoCode);
-    error SubscriptionRequired();
     error InvalidPromoCode(string promoCode);
+    error ExpiredPromoCode(string promoCode);
     error ZeroDuration();
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
     uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
+    uint16 private constant RATE_MULTIPLIER = 1000;
 
     IERC20Metadata private _paymentToken;
-    uint16 public commissionRate;
-    uint16 public discountRate;
 
     uint16[] private _planIndex;
     mapping(uint16 => Plan) private _plans; // duration => cost
 
     mapping(address => uint32) private _subscriptions; // subscriber => deadline
-    mapping(address => string) private _promoCodes; // owner => promo code
-    mapping(string => address) private _promoCodesOwners; // promo code => owner
+    mapping(address => string[]) private _addressPromoCodes; // address => promo code names
+    mapping(string => PromoCode) private _promoCodes; // name => promo code
 
-    constructor(address paymentTokenAddress, uint16 _commissionRate, uint16 _discountRate, uint16[] memory planDurations, uint16[] memory planCosts) {
+    constructor(address paymentTokenAddress, uint16[] memory planDurations, uint16[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _paymentToken = IERC20Metadata(paymentTokenAddress);
-        commissionRate = _commissionRate;
-        discountRate = _discountRate;
 
         uint length = planDurations.length;
         for (uint i = 0; i < length; i++) {
@@ -53,14 +57,6 @@ contract CryptoSubscription is AccessControl {
 
             _planIndex.push(duration);
         }
-    }
-
-    // Modifiers
-
-    modifier activeSubscriber(address _address) {
-        uint32 currentDeadline = _subscriptions[_address];
-        if (currentDeadline == 0 || block.timestamp > currentDeadline) revert SubscriptionRequired();
-        _;
     }
 
     // Public View Methods
@@ -88,17 +84,28 @@ contract CryptoSubscription is AccessControl {
         return _subscriptions[_address];
     }
 
-    function promoCode(address _address) public view returns (string memory) {
-        return _promoCodes[_address];
+    function promoCodes(address _address) public view returns (string[] memory) {
+        return _addressPromoCodes[_address];
     }
 
-    function promoCodeOwner(string memory _promoCode) public view returns (address) {
-        return _promoCodesOwners[_promoCode];
+    function promoCode(string memory name) public view returns (PromoCode memory) {
+        return _promoCodes[name];
     }
 
-    function stateInfo() public view returns (address, uint16, uint16, uint16[] memory, uint16[] memory) {
+    function promoCodesInfo(address _address) public view returns (PromoCode[] memory) {
+        string[] memory names = _addressPromoCodes[_address];
+        PromoCode[] memory result = new PromoCode[](names.length);
+
+        for (uint i = 0; i < names.length; i++) {
+            result[i] = _promoCodes[names[i]];
+        }
+
+        return result;
+    }
+
+    function stateInfo() public view returns (address, uint16[] memory, uint16[] memory) {
         (uint16[] memory durations, uint16[] memory costs) = plans();
-        return (address(_paymentToken), commissionRate, discountRate, durations, costs);
+        return (address(_paymentToken), durations, costs);
     }
 
     function addressInfo(address _address) public view returns (bool, bool, uint32) {
@@ -122,14 +129,6 @@ contract CryptoSubscription is AccessControl {
     }
 
     // Moderator Actions
-
-    function updateCommissionRate(uint16 newRate) public onlyRole(MODERATOR_ROLE) {
-        commissionRate = newRate;
-    }
-
-    function updateDiscountRate(uint16 newRate) public onlyRole(MODERATOR_ROLE) {
-        discountRate = newRate;
-    }
 
     function updatePlans(uint16[] calldata durations, uint16[] calldata costs) public onlyRole(MODERATOR_ROLE) {
         uint length = durations.length;
@@ -164,16 +163,21 @@ contract CryptoSubscription is AccessControl {
         emit Whitelist(_address, duration);
     }
 
-    // Promoter Actions
+    function setPromoCode(address _address, string memory name, uint16 commissionRate, uint16 discountRate, uint16 duration) public onlyRole(MODERATOR_ROLE) {
+        if (bytes(name).length == 0) revert EmptyPromoCode();
+        if (_promoCodes[name]._address != address(0)) revert PromoCodeAlreadyExists(name);
 
-    function setPromoCode(string memory _promoCode) public activeSubscriber(msg.sender) {
-        if (bytes(_promoCode).length == 0) revert EmptyPromoCode();
-        if (_promoCodesOwners[_promoCode] != address(0)) revert PromoCodeAlreadyExists(_promoCode);
+        uint32 deadline = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
 
-        _promoCodes[msg.sender] = _promoCode;
-        _promoCodesOwners[_promoCode] = msg.sender;
+        PromoCode storage _promoCode = _promoCodes[name];
+        _promoCode._address = _address;
+        _promoCode.commissionRate = commissionRate;
+        _promoCode.discountRate = discountRate;
+        _promoCode.deadline = deadline;
 
-        emit PromoCodeAddition(msg.sender, _promoCode);
+        _addressPromoCodes[_address].push(name);
+
+        emit PromoCodeAddition(_address, name, commissionRate, discountRate, deadline);
     }
 
     // Subscriber Actions
@@ -189,23 +193,26 @@ contract CryptoSubscription is AccessControl {
         emit Subscription(msg.sender, duration, cost);
     }
 
-    function subscribeWithPromoCode(uint16 duration, string memory _promoCode) public {
+    function subscribeWithPromoCode(uint16 duration, string memory promoCodeName) public {
         uint16 cost = _plans[duration].cost;
-        address codeOwner = _promoCodesOwners[_promoCode];
 
         if (cost == 0) revert InvalidPlan(duration);
-        if (codeOwner == address(0)) revert InvalidPromoCode(_promoCode);
+
+        PromoCode memory _promoCode = _promoCodes[promoCodeName];
+
+        if (_promoCode._address == address(0)) revert InvalidPromoCode(promoCodeName);
+        if (_promoCode.deadline < block.timestamp) revert ExpiredPromoCode(promoCodeName);
 
         uint tokenCost = cost * 10 ** _paymentToken.decimals();
-        uint promoCodeOwnerAmount = tokenCost * commissionRate / 1000;
-        uint contractAmount = tokenCost - tokenCost * (commissionRate + discountRate) / 1000;
+        uint promoCodeAmount = tokenCost * _promoCode.commissionRate / RATE_MULTIPLIER;
+        uint contractAmount = tokenCost - tokenCost * (_promoCode.commissionRate + _promoCode.discountRate) / RATE_MULTIPLIER;
 
-        _paymentToken.transferFrom(msg.sender, codeOwner, promoCodeOwnerAmount);
+        _paymentToken.transferFrom(msg.sender, _promoCode._address, promoCodeAmount);
         _paymentToken.transferFrom(msg.sender, address(this), contractAmount);
 
         _updateDeadline(msg.sender, duration);
 
-        emit SubscriptionWithPromoCode(msg.sender, _promoCode, duration, cost);
+        emit SubscriptionWithPromoCode(msg.sender, promoCodeName, duration, cost);
     }
 
     // Private Methods
