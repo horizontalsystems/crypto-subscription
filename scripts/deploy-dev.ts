@@ -5,8 +5,6 @@ async function main() {
   console.log('Deployer address:', deployer.address)
 
   const tokenDecimals = 6
-  const commissionRate = 0.2
-  const discountRate = 0.1
   const plans = { 30: 200, 90: 500, 180: 800 }
 
   const Token = await ethers.getContractFactory('TestErc20')
@@ -17,8 +15,6 @@ async function main() {
   const CryptoSubscription = await ethers.getContractFactory('CryptoSubscription')
   const contract = await CryptoSubscription.deploy(
     token.address,
-    commissionRate * 1000,
-    discountRate * 1000,
     Object.keys(plans),
     Object.values(plans)
   )
