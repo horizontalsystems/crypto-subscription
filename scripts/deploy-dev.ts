@@ -1,11 +1,13 @@
 import { ethers } from 'hardhat'
+import { BigNumber } from 'ethers'
 
 async function main() {
-  const [deployer, moderator, promoter] = await ethers.getSigners()
+  const [deployer, moderator, promoter, subscriber] = await ethers.getSigners()
 
   console.log('Deployer address:', deployer.address)
   console.log('Moderator address:', moderator.address)
   console.log('Promoter address:', promoter.address)
+  console.log('Subscriber address:', subscriber.address)
 
   const tokenDecimals = 6
   const plans = { 30: 200, 90: 500, 180: 800 }
@@ -33,6 +35,7 @@ async function main() {
   const discountRate = 0.1
   const duration = 30
   await contract.connect(moderator).setPromoCode(promoter.address, promoCodeName, commissionRate * 1000, discountRate * 1000, duration)
+  await token.mint(subscriber.address, BigNumber.from(5000).mul(BigNumber.from(10).pow(tokenDecimals)))
 
   console.log('Promo code created:', promoCodeName)
 }
