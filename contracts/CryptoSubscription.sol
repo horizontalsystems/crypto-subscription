@@ -16,7 +16,7 @@ contract CryptoSubscription is AccessControl {
     event Whitelist(address indexed _address, uint16 duration);
     event PromoCodeAddition(address indexed _address, string name, uint16 commissionRate, uint16 discountRate, uint32 deadline);
     event Subscription(address indexed subscriber, uint16 duration, address paymentToken, uint256 tokenCost);
-    event SubscriptionWithPromoCode(address indexed subscriber, string promoCode, uint16 duration, address paymentToken, uint256 tokenCost);
+    event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint16 duration, address paymentToken, uint256 tokenCost);
 
     error InvalidPlan(uint16 duration);
     error EmptyPromoCode();
