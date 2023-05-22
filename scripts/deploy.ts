@@ -4,7 +4,7 @@ async function main() {
   const [deployer] = await ethers.getSigners()
 
   const tokenAddress = process.env.TOKEN_ADDRESS
-  const plans = { 30: 200, 90: 500, 180: 800 }
+  const plans = { 30: 10, 90: 20, 180: 30 }
 
   if (tokenAddress === undefined) {
     throw new Error('Token address is required')

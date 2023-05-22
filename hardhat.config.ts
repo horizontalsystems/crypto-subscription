@@ -22,8 +22,8 @@ const config: HardhatUserConfig = {
     local: {
       url: 'http://192.168.1.15:8545',
     },
-    goerli: {
-      url: 'https://rpc.ankr.com/eth_goerli',
+    sepolia: {
+      url: 'https://rpc.sepolia.org',
       accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },
     mainnet: {
