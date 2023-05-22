@@ -13,7 +13,8 @@ contract CryptoSubscription is AccessControl {
     }
 
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress);
-    event Whitelist(address indexed _address, uint16 duration);
+    event AddSubscription(address indexed _address, uint16 duration);
+    event SubtractSubscription(address indexed _address, uint16 duration);
     event PromoCodeAddition(address indexed _address, string name, uint16 commissionRate, uint16 discountRate, uint32 deadline);
     event Subscription(address indexed subscriber, uint16 duration, address paymentToken, uint256 tokenCost);
     event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint16 duration, address paymentToken, uint256 tokenCost);
@@ -112,7 +113,13 @@ contract CryptoSubscription is AccessControl {
 
     function addSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
         _updateDeadline(_address, duration);
-        emit Whitelist(_address, duration);
+        emit AddSubscription(_address, duration);
+    }
+
+    function subtractSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
+        uint32 currentDeadline = _subscriptions[_address];
+        _subscriptions[_address] = currentDeadline - uint32(duration) * ONE_DAY_SECONDS;
+        emit SubtractSubscription(_address, duration);
     }
 
     function setPromoCode(address _address, string memory name, uint16 commissionRate, uint16 discountRate, uint16 duration) public onlyRole(MODERATOR_ROLE) {

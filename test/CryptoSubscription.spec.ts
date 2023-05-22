@@ -197,7 +197,7 @@ describe('CryptoSubscription', function () {
 
     it('emits event on add subscription', async () => {
       await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
-        .to.emit(contract, 'Whitelist')
+        .to.emit(contract, 'AddSubscription')
         .withArgs(subscriber1.address, duration)
     })
 
@@ -233,6 +233,30 @@ describe('CryptoSubscription', function () {
 
         expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
       })
+    })
+  })
+
+  describe('#subtractSubscription', () => {
+    let initialDeadline = 0
+    let duration = 15
+
+    beforeEach(async () => {
+      initialDeadline = await mockSubscriptionDuration(subscriber1, 30)
+    })
+
+    it('reverts if called by non-moderator role', async () => {
+      await expect(contract.connect(other).subtractSubscription(subscriber1.address, duration)).to.be.reverted
+    })
+
+    it('emits event on subtract subscription', async () => {
+      await expect(contract.connect(moderator).subtractSubscription(subscriber1.address, duration))
+        .to.emit(contract, 'SubtractSubscription')
+        .withArgs(subscriber1.address, duration)
+    })
+
+    it('decreases deadline to provided period amount', async () => {
+      await contract.connect(moderator).subtractSubscription(subscriber1.address, duration)
+      expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(initialDeadline - dayToSeconds(duration))
     })
   })
 
