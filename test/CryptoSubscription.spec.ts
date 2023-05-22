@@ -195,68 +195,96 @@ describe('CryptoSubscription', function () {
       await expect(contract.connect(other).addSubscription(subscriber1.address, duration)).to.be.reverted
     })
 
-    it('emits event on add subscription', async () => {
-      await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
-        .to.emit(contract, 'AddSubscription')
-        .withArgs(subscriber1.address, duration)
-    })
-
     describe('for new subscriber', () => {
-      it('sets deadline to duration time starting from block time', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let currentTimestamp = (await time.latest()) + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expectedDeadline = currentTimestamp + dayToSeconds(duration)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
+      it('sets deadline to duration time starting from block time', async () => {
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on add subscription', async () => {
+        await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
+          .to.emit(contract, 'UpdateSubscription')
+          .withArgs(subscriber1.address, duration, expectedDeadline)
       })
     })
 
     describe('for existing non-expired subscriber', () => {
-      it('adds duration to deadline', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
         await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expectedDeadline = expirationTimestamp + dayToSeconds(duration)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration))
+      it('adds duration to deadline', async () => {
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on add subscription', async () => {
+        await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
+          .to.emit(contract, 'UpdateSubscription')
+          .withArgs(subscriber1.address, duration, expectedDeadline)
       })
     })
 
     describe('for existing expired subscriber', () => {
-      it('sets deadline to duration time starting from block time', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
         let currentTimestamp = expirationTimestamp + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expectedDeadline = currentTimestamp + dayToSeconds(duration)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
+      it('sets deadline to duration time starting from block time', async () => {
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on add subscription', async () => {
+        await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
+          .to.emit(contract, 'UpdateSubscription')
+          .withArgs(subscriber1.address, duration, expectedDeadline)
       })
     })
   })
 
   describe('#subtractSubscription', () => {
-    let initialDeadline = 0
+    let expectedDeadline = 0
     let duration = 15
 
     beforeEach(async () => {
-      initialDeadline = await mockSubscriptionDuration(subscriber1, 30)
+      let initialDeadline = await mockSubscriptionDuration(subscriber1, 30)
+      expectedDeadline = initialDeadline - dayToSeconds(duration)
     })
 
     it('reverts if called by non-moderator role', async () => {
       await expect(contract.connect(other).subtractSubscription(subscriber1.address, duration)).to.be.reverted
     })
 
-    it('emits event on subtract subscription', async () => {
-      await expect(contract.connect(moderator).subtractSubscription(subscriber1.address, duration))
-        .to.emit(contract, 'SubtractSubscription')
-        .withArgs(subscriber1.address, duration)
-    })
-
     it('decreases deadline to provided period amount', async () => {
       await contract.connect(moderator).subtractSubscription(subscriber1.address, duration)
-      expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(initialDeadline - dayToSeconds(duration))
+      expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+    })
+
+    it('emits event on subtract subscription', async () => {
+      await expect(contract.connect(moderator).subtractSubscription(subscriber1.address, duration))
+        .to.emit(contract, 'UpdateSubscription')
+        .withArgs(subscriber1.address, -duration, expectedDeadline)
     })
   })
 
@@ -369,43 +397,88 @@ describe('CryptoSubscription', function () {
       )
     })
 
-    it('emits event on subscription', async () => {
-      await expect(contract.connect(subscriber1).subscribe(duration1))
-        .to.emit(contract, 'Subscription')
-        .withArgs(subscriber1.address, duration1, paymentToken.address, convertedAmount(cost1, contractDecimals, paymentTokenDecimals))
-    })
-
     describe('for new subscriber', () => {
-      it('sets deadline to duration time starting from block time', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let currentTimestamp = (await time.latest()) + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(subscriber1).subscribe(duration1)
+        expectedDeadline = currentTimestamp + dayToSeconds(duration1)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
+      it('sets deadline to duration time starting from block time', async () => {
+        await contract.connect(subscriber1).subscribe(duration1)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on subscription', async () => {
+        await expect(contract.connect(subscriber1).subscribe(duration1))
+          .to.emit(contract, 'Subscription')
+          .withArgs(
+            subscriber1.address,
+            duration1,
+            paymentToken.address,
+            convertedAmount(cost1, contractDecimals, paymentTokenDecimals),
+            expectedDeadline
+          )
       })
     })
 
     describe('for existing non-expired subscriber', () => {
-      it('adds duration to deadline', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
         await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-        await contract.connect(subscriber1).subscribe(duration2)
+        expectedDeadline = expirationTimestamp + dayToSeconds(duration2)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
+      it('adds duration to deadline', async () => {
+        await contract.connect(subscriber1).subscribe(duration2)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on subscription', async () => {
+        await expect(contract.connect(subscriber1).subscribe(duration2))
+          .to.emit(contract, 'Subscription')
+          .withArgs(
+            subscriber1.address,
+            duration2,
+            paymentToken.address,
+            convertedAmount(cost2, contractDecimals, paymentTokenDecimals),
+            expectedDeadline
+          )
       })
     })
 
     describe('for existing expired subscriber', () => {
-      it('sets deadline to duration time starting from block time', async () => {
+      let expectedDeadline = 0
+
+      beforeEach(async () => {
         let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
         let currentTimestamp = expirationTimestamp + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(subscriber1).subscribe(duration2)
+        expectedDeadline = currentTimestamp + dayToSeconds(duration2)
+      })
 
-        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
+      it('sets deadline to duration time starting from block time', async () => {
+        await contract.connect(subscriber1).subscribe(duration2)
+        expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+      })
+
+      it('emits event on subscription', async () => {
+        await expect(contract.connect(subscriber1).subscribe(duration2))
+          .to.emit(contract, 'Subscription')
+          .withArgs(
+            subscriber1.address,
+            duration2,
+            paymentToken.address,
+            convertedAmount(cost2, contractDecimals, paymentTokenDecimals),
+            expectedDeadline
+          )
       })
     })
   })
@@ -438,18 +511,6 @@ describe('CryptoSubscription', function () {
         )
       })
 
-      it('emits event on subscription', async () => {
-        await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName))
-          .to.emit(contract, 'SubscriptionWithPromoCode')
-          .withArgs(
-            subscriber1.address,
-            promoCodeName,
-            duration1,
-            paymentToken.address,
-            convertedAmount(cost1.sub(rateValue(cost1, discountRate)), contractDecimals, paymentTokenDecimals)
-          )
-      })
-
       it('increases balance of promoter', async () => {
         let commission = rateValue(cost1, commissionRate)
         let commission2 = rateValue(cost2, commissionRate)
@@ -478,36 +539,90 @@ describe('CryptoSubscription', function () {
       })
 
       describe('for new subscriber', () => {
-        it('sets deadline to duration time starting from block time', async () => {
+        let expectedDeadline = 0
+
+        beforeEach(async () => {
           let currentTimestamp = (await time.latest()) + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName)
+          expectedDeadline = currentTimestamp + dayToSeconds(duration1)
+        })
 
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration1))
+        it('sets deadline to duration time starting from block time', async () => {
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
+
+        it('emits event on subscription', async () => {
+          await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration1, promoCodeName))
+            .to.emit(contract, 'SubscriptionWithPromoCode')
+            .withArgs(
+              subscriber1.address,
+              promoCodeName,
+              duration1,
+              paymentToken.address,
+              convertedAmount(cost1.sub(rateValue(cost1, discountRate)), contractDecimals, paymentTokenDecimals),
+              expectedDeadline
+            )
         })
       })
 
       describe('for existing non-expired subscriber', () => {
-        it('adds duration to deadline', async () => {
+        let expectedDeadline = 0
+
+        beforeEach(async () => {
           let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
+          expectedDeadline = expirationTimestamp + dayToSeconds(duration2)
+        })
 
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration2))
+        it('adds duration to deadline', async () => {
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
+
+        it('emits event on subscription', async () => {
+          await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName))
+            .to.emit(contract, 'SubscriptionWithPromoCode')
+            .withArgs(
+              subscriber1.address,
+              promoCodeName,
+              duration2,
+              paymentToken.address,
+              convertedAmount(cost2.sub(rateValue(cost2, discountRate)), contractDecimals, paymentTokenDecimals),
+              expectedDeadline
+            )
         })
       })
 
       describe('for existing expired subscriber', () => {
-        it('sets deadline to duration time starting from block time', async () => {
+        let expectedDeadline = 0
+
+        beforeEach(async () => {
           let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
           let currentTimestamp = expirationTimestamp + 1
           await time.setNextBlockTimestamp(currentTimestamp)
 
-          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
+          expectedDeadline = currentTimestamp + dayToSeconds(duration2)
+        })
 
-          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration2))
+        it('sets deadline to duration time starting from block time', async () => {
+          await contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName)
+          expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expectedDeadline)
+        })
+
+        it('emits event on subscription', async () => {
+          await expect(contract.connect(subscriber1).subscribeWithPromoCode(duration2, promoCodeName))
+            .to.emit(contract, 'SubscriptionWithPromoCode')
+            .withArgs(
+              subscriber1.address,
+              promoCodeName,
+              duration2,
+              paymentToken.address,
+              convertedAmount(cost2.sub(rateValue(cost2, discountRate)), contractDecimals, paymentTokenDecimals),
+              expectedDeadline
+            )
         })
       })
     })

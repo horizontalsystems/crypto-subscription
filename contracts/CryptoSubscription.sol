@@ -13,11 +13,10 @@ contract CryptoSubscription is AccessControl {
     }
 
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress);
-    event AddSubscription(address indexed _address, uint16 duration);
-    event SubtractSubscription(address indexed _address, uint16 duration);
+    event UpdateSubscription(address indexed _address, int16 duration, uint256 deadline);
     event PromoCodeAddition(address indexed _address, string name, uint16 commissionRate, uint16 discountRate, uint32 deadline);
-    event Subscription(address indexed subscriber, uint16 duration, address paymentToken, uint256 tokenCost);
-    event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint16 duration, address paymentToken, uint256 tokenCost);
+    event Subscription(address indexed subscriber, uint16 duration, address paymentToken, uint256 tokenCost, uint32 deadline);
+    event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint16 duration, address paymentToken, uint256 tokenCost, uint32 deadline);
 
     error InvalidPlan(uint16 duration);
     error EmptyPromoCode();
@@ -112,14 +111,14 @@ contract CryptoSubscription is AccessControl {
     }
 
     function addSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
-        _updateDeadline(_address, duration);
-        emit AddSubscription(_address, duration);
+        uint32 deadline = _updateDeadline(_address, duration);
+        emit UpdateSubscription(_address, int16(duration), deadline);
     }
 
     function subtractSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
-        uint32 currentDeadline = _subscriptions[_address];
-        _subscriptions[_address] = currentDeadline - uint32(duration) * ONE_DAY_SECONDS;
-        emit SubtractSubscription(_address, duration);
+        uint32 newDeadline = _subscriptions[_address] - uint32(duration) * ONE_DAY_SECONDS;
+        _subscriptions[_address] = newDeadline;
+        emit UpdateSubscription(_address, - int16(duration), newDeadline);
     }
 
     function setPromoCode(address _address, string memory name, uint16 commissionRate, uint16 discountRate, uint16 duration) public onlyRole(MODERATOR_ROLE) {
@@ -159,9 +158,9 @@ contract CryptoSubscription is AccessControl {
         uint256 tokenCost = _convert(cost, DECIMALS, _paymentToken.decimals());
 
         _paymentToken.transferFrom(msg.sender, address(this), tokenCost);
-        _updateDeadline(msg.sender, duration);
+        uint32 deadline = _updateDeadline(msg.sender, duration);
 
-        emit Subscription(msg.sender, duration, address(_paymentToken), tokenCost);
+        emit Subscription(msg.sender, duration, address(_paymentToken), tokenCost, deadline);
     }
 
     function subscribeWithPromoCode(uint16 duration, string memory promoCodeName) public {
@@ -182,21 +181,26 @@ contract CryptoSubscription is AccessControl {
         uint256 tokenContractAmount = _convert(contractAmount, DECIMALS, _paymentToken.decimals());
 
         _paymentToken.transferFrom(msg.sender, address(this), tokenContractAmount);
-        _updateDeadline(msg.sender, duration);
+        uint32 deadline = _updateDeadline(msg.sender, duration);
 
-        emit SubscriptionWithPromoCode(msg.sender, promoCodeName, duration, address(_paymentToken), tokenContractAmount);
+        emit SubscriptionWithPromoCode(msg.sender, promoCodeName, duration, address(_paymentToken), tokenContractAmount, deadline);
     }
 
     // Private Methods
 
-    function _updateDeadline(address _address, uint16 duration) private {
+    function _updateDeadline(address _address, uint16 duration) private returns (uint32) {
         uint32 currentDeadline = _subscriptions[_address];
+        uint32 newDeadline;
 
         if (currentDeadline == 0 || block.timestamp > currentDeadline) {
-            _subscriptions[_address] = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+            newDeadline = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
         } else {
-            _subscriptions[_address] = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+            newDeadline = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
         }
+
+        _subscriptions[_address] = newDeadline;
+
+        return newDeadline;
     }
 
     function _convert(uint256 amount, uint8 fromDecimals, uint8 toDecimals) private pure returns (uint256) {
