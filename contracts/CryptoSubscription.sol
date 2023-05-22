@@ -110,7 +110,7 @@ contract CryptoSubscription is AccessControl {
         }
     }
 
-    function whitelist(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
+    function addSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
         _updateDeadline(_address, duration);
         emit Whitelist(_address, duration);
     }

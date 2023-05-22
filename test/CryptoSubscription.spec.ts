@@ -188,15 +188,15 @@ describe('CryptoSubscription', function () {
     })
   })
 
-  describe('#whitelist', () => {
+  describe('#addSubscription', () => {
     let duration = 15
 
     it('reverts if called by non-moderator role', async () => {
-      await expect(contract.connect(other).whitelist(subscriber1.address, duration)).to.be.reverted
+      await expect(contract.connect(other).addSubscription(subscriber1.address, duration)).to.be.reverted
     })
 
-    it('emits event on whitelist', async () => {
-      await expect(contract.connect(moderator).whitelist(subscriber1.address, duration))
+    it('emits event on add subscription', async () => {
+      await expect(contract.connect(moderator).addSubscription(subscriber1.address, duration))
         .to.emit(contract, 'Whitelist')
         .withArgs(subscriber1.address, duration)
     })
@@ -206,7 +206,7 @@ describe('CryptoSubscription', function () {
         let currentTimestamp = (await time.latest()) + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(moderator).whitelist(subscriber1.address, duration)
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
 
         expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
       })
@@ -217,7 +217,7 @@ describe('CryptoSubscription', function () {
         let expirationTimestamp = await mockSubscriptionDuration(subscriber1, duration1)
         await time.setNextBlockTimestamp(expirationTimestamp - 1)
 
-        await contract.connect(moderator).whitelist(subscriber1.address, duration)
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
 
         expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(expirationTimestamp + dayToSeconds(duration))
       })
@@ -229,7 +229,7 @@ describe('CryptoSubscription', function () {
         let currentTimestamp = expirationTimestamp + 1
         await time.setNextBlockTimestamp(currentTimestamp)
 
-        await contract.connect(moderator).whitelist(subscriber1.address, duration)
+        await contract.connect(moderator).addSubscription(subscriber1.address, duration)
 
         expect(await contract.subscriptionDeadline(subscriber1.address)).to.eq(currentTimestamp + dayToSeconds(duration))
       })
@@ -522,7 +522,7 @@ describe('CryptoSubscription', function () {
     let subscriptionTimestamp = (await time.latest()) + 1
 
     await time.setNextBlockTimestamp(subscriptionTimestamp)
-    await contract.connect(moderator).whitelist(signer.address, duration)
+    await contract.connect(moderator).addSubscription(signer.address, duration)
 
     return subscriptionTimestamp + dayToSeconds(duration)
   }
