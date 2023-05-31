@@ -10,7 +10,12 @@ async function main() {
   console.log('Subscriber address:', subscriber.address)
 
   const tokenDecimals = 6
-  const plans = { 30: 200, 90: 500, 180: 800 }
+  const contractDecimals = 2
+  const plans = {
+    30: 200 * 10 ** contractDecimals,
+    90: 500 * 10 ** contractDecimals,
+    180: 800 * 10 ** contractDecimals
+  }
 
   const Token = await ethers.getContractFactory('TestErc20')
   const token = await Token.deploy(tokenDecimals)
