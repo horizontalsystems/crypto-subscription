@@ -8,7 +8,7 @@ import { time } from '@nomicfoundation/hardhat-network-helpers'
 
 use(smock.matchers)
 
-describe('CryptoSubscription', function () {
+describe('CryptoSubscription', function() {
   let contract: CryptoSubscription
   let contractDecimals = 2
   let rateMultiplier = 1000
@@ -104,38 +104,71 @@ describe('CryptoSubscription', function () {
       expect(await contract.paymentToken()).to.eq(newPaymentToken.address)
     })
 
-    describe('withdraw balance of old payment token and fulfill balance of new token', () => {
-      let amount = toTokenAmount(500, paymentTokenDecimals)
-      let totalPromoterBalance = BigNumber.from(0)
+    describe('withdraw balance of old payment token', () => {
+      describe('for non-zero balance', () => {
+        let amount = toTokenAmount(500, paymentTokenDecimals)
 
-      beforeEach(async () => {
-        paymentToken.balanceOf.whenCalledWith(contract.address).returns(amount)
+        beforeEach(async () => {
+          paymentToken.balanceOf.whenCalledWith(contract.address).returns(amount)
+        })
 
-        let balance1 = await mockPromoterBalance(promoCodeOwner, 'Promo 1')
-        let balance2 = await mockPromoterBalance(promoCodeOwner2, 'Promo 2')
-
-        totalPromoterBalance = balance1.add(balance2)
+        it('transfers all tokens from contract to withdraw address', async () => {
+          await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
+          expect(paymentToken.transfer).to.have.been.calledOnceWith(other.address, amount)
+        })
       })
 
-      it('transfers all tokens from contract to withdraw address', async () => {
-        await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
-        expect(paymentToken.transfer).to.have.been.calledOnceWith(other.address, amount)
+      describe('for zero balance', () => {
+        beforeEach(async () => {
+          paymentToken.balanceOf.whenCalledWith(contract.address).returns(0)
+        })
+
+        it('does not transfer any tokens from contract to withdraw address', async () => {
+          await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
+          expect(paymentToken.transfer).to.have.not.been.called
+        })
+      })
+    })
+
+    describe('fulfill balance of new token', () => {
+      describe('for non-zero total promoter balance', () => {
+        let totalPromoterBalance = BigNumber.from(0)
+
+        beforeEach(async () => {
+          paymentToken.balanceOf.whenCalledWith(contract.address).returns(0)
+
+          let balance1 = await mockPromoterBalance(promoCodeOwner, 'Promo 1')
+          let balance2 = await mockPromoterBalance(promoCodeOwner2, 'Promo 2')
+
+          totalPromoterBalance = balance1.add(balance2)
+        })
+
+        it('transfers total promoters balance to new payment token', async () => {
+          await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
+          expect(newPaymentToken.transferFrom).to.have.been.calledOnceWith(
+            other2.address,
+            contract.address,
+            convertedAmount(totalPromoterBalance, contractDecimals, newPaymentTokenDecimals)
+          )
+        })
       })
 
-      it('transfers total promoters balance to new payment token', async () => {
-        await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
-        expect(newPaymentToken.transferFrom).to.have.been.calledOnceWith(
-          other2.address,
-          contract.address,
-          convertedAmount(totalPromoterBalance, contractDecimals, newPaymentTokenDecimals)
-        )
-      })
+      describe('for zero total promoter balance', () => {
+        beforeEach(async () => {
+          paymentToken.balanceOf.whenCalledWith(contract.address).returns(0)
+        })
 
-      it('emits event when payment token changed', async () => {
-        await expect(contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address))
-          .to.emit(contract, 'PaymentTokenChange')
-          .withArgs(paymentToken.address, newPaymentToken.address)
+        it('does not transfer any tokens to new payment token', async () => {
+          await contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address)
+          expect(newPaymentToken.transferFrom).to.have.not.been.called
+        })
       })
+    })
+
+    it('emits event when payment token changed', async () => {
+      await expect(contract.connect(owner).changePaymentToken(newPaymentToken.address, other.address, other2.address))
+        .to.emit(contract, 'PaymentTokenChange')
+        .withArgs(paymentToken.address, newPaymentToken.address)
     })
   })
 

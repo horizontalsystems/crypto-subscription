@@ -84,10 +84,17 @@ contract CryptoSubscription is AccessControl {
         address oldAddress = address(_paymentToken);
         uint _balance = _paymentToken.balanceOf(address(this));
 
-        _paymentToken.transfer(withdrawAddress, _balance);
+        if (_balance != 0) {
+            _paymentToken.transfer(withdrawAddress, _balance);
+        }
+
         _paymentToken = IERC20Metadata(_address);
 
-        _paymentToken.transferFrom(chargeAddress, address(this), _convert(totalPromoterBalance, DECIMALS, _paymentToken.decimals()));
+        uint256 _totalPromoterBalance = totalPromoterBalance;
+
+        if (_totalPromoterBalance != 0) {
+            _paymentToken.transferFrom(chargeAddress, address(this), _convert(_totalPromoterBalance, DECIMALS, _paymentToken.decimals()));
+        }
 
         emit PaymentTokenChange(oldAddress, _address);
     }
