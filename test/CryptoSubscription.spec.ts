@@ -54,6 +54,11 @@ describe('CryptoSubscription', function() {
       expect(await contract.hasRole(defaultAdminRole, owner.address)).to.be.true
     })
 
+    it('reverts if payment token if not ERC20 contract', async () => {
+      const CryptoSubscription = await ethers.getContractFactory('CryptoSubscription', { signer: owner })
+      await expect(CryptoSubscription.deploy(other.address, durations, costs)).to.be.reverted
+    })
+
     it('sets payment token to provided one', async () => {
       expect(await contract.paymentToken()).to.eq(paymentToken.address)
     })
@@ -86,7 +91,7 @@ describe('CryptoSubscription', function() {
     })
   })
 
-  describe('#updatePaymentToken', () => {
+  describe('#changePaymentToken', () => {
     let newPaymentToken: FakeContract<IERC20Metadata>
     let newPaymentTokenDecimals = 18
 
@@ -97,6 +102,10 @@ describe('CryptoSubscription', function() {
 
     it('reverts if called by non-default admin role', async () => {
       await expect(contract.connect(moderator).changePaymentToken(newPaymentToken.address, other.address, other2.address)).to.be.reverted
+    })
+
+    it('reverts if new payment token is not ERC20 contract', async () => {
+      await expect(contract.connect(owner).changePaymentToken(moderator.address, other.address, other2.address)).to.be.reverted
     })
 
     it('changes payment token to new one', async () => {

@@ -45,6 +45,8 @@ contract CryptoSubscription is AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _paymentToken = IERC20Metadata(paymentTokenAddress);
 
+        _paymentToken.balanceOf(address(this));
+
         uint length = planDurations.length;
         for (uint i = 0; i < length; i++) {
             uint16 duration = planDurations[i];
@@ -89,6 +91,7 @@ contract CryptoSubscription is AccessControl {
         }
 
         _paymentToken = IERC20Metadata(_address);
+        _paymentToken.balanceOf(address(this));
 
         uint256 _totalPromoterBalance = totalPromoterBalance;
 
