@@ -17,11 +17,11 @@ describe('CryptoSubscription', function() {
   let paymentTokenDecimals = 6
 
   let duration1 = 30
-  let cost1 = contractValue(200)
+  let cost1 = contractValue(89)
   let duration2 = 90
-  let cost2 = contractValue(500)
+  let cost2 = contractValue(210)
   let duration3 = 180
-  let cost3 = contractValue(800)
+  let cost3 = contractValue(320)
 
   let durations = [duration1, duration2, duration3]
   let costs = [cost1, cost2, cost3]
@@ -361,10 +361,10 @@ describe('CryptoSubscription', function() {
       await contract.connect(moderator).setPromoCode(subscriber1.address, promoCodeName, commissionRate, discountRate, duration)
 
       let promoCode = await contract.promoCode(promoCodeName)
-      expect(promoCode).to.have.property('_address', subscriber1.address)
-      expect(promoCode).to.have.property('commissionRate', commissionRate)
-      expect(promoCode).to.have.property('discountRate', discountRate)
-      expect(promoCode).to.have.property('deadline', blockTimestamp + dayToSeconds(duration))
+      expect(promoCode._address).to.eq(subscriber1.address)
+      expect(promoCode.commissionRate).to.eq(commissionRate)
+      expect(promoCode.discountRate).to.eq(discountRate)
+      expect(promoCode.deadline).to.eq(blockTimestamp + dayToSeconds(duration))
     })
 
     it('emits event on addition', async () => {
@@ -722,10 +722,10 @@ describe('CryptoSubscription', function() {
   }
 
   function rate(value: number) {
-    return value * rateMultiplier
+    return BigNumber.from(value * rateMultiplier)
   }
 
-  function rateValue(value: BigNumber, rate: number) {
+  function rateValue(value: BigNumber, rate: BigNumber) {
     return value.mul(rate).div(rateMultiplier)
   }
 })

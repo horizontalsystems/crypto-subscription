@@ -7,18 +7,18 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 contract CryptoSubscription is AccessControl {
     struct PromoCode {
         address _address;
-        uint16 commissionRate;
-        uint16 discountRate;
-        uint32 deadline;
+        uint commissionRate;
+        uint discountRate;
+        uint deadline;
     }
 
     event PaymentTokenChange(address indexed oldAddress, address indexed newAddress);
-    event UpdateSubscription(address indexed _address, int16 duration, uint256 deadline);
-    event PromoCodeAddition(address indexed _address, string name, uint16 commissionRate, uint16 discountRate, uint32 deadline);
-    event Subscription(address indexed subscriber, uint16 duration, address paymentToken, uint256 tokenCost, uint32 deadline);
-    event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint16 duration, address paymentToken, uint256 tokenCost, uint32 deadline);
+    event UpdateSubscription(address indexed _address, int duration, uint deadline);
+    event PromoCodeAddition(address indexed _address, string name, uint commissionRate, uint discountRate, uint deadline);
+    event Subscription(address indexed subscriber, uint duration, address paymentToken, uint tokenCost, uint deadline);
+    event SubscriptionWithPromoCode(address indexed subscriber, string indexed promoCode, uint duration, address paymentToken, uint tokenCost, uint deadline);
 
-    error InvalidPlan(uint16 duration);
+    error InvalidPlan(uint duration);
     error EmptyPromoCode();
     error PromoCodeAlreadyExists(string promoCode);
     error InvalidPromoCode(string promoCode);
@@ -27,21 +27,21 @@ contract CryptoSubscription is AccessControl {
     error NothingToClaim();
 
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
-    uint32 private constant ONE_DAY_SECONDS = 24 * 60 * 60;
-    uint16 private constant RATE_MULTIPLIER = 1000;
+    uint private constant ONE_DAY_SECONDS = 24 * 60 * 60;
+    uint private constant RATE_MULTIPLIER = 1000;
     uint8 private constant DECIMALS = 2;
 
     IERC20Metadata private _paymentToken;
 
-    mapping(uint16 => uint256) private _plans; // duration => cost
-    mapping(address => uint32) private _subscriptions; // subscriber => deadline
+    mapping(uint => uint) private _plans; // duration => cost
+    mapping(address => uint) private _subscriptions; // subscriber => deadline
 
-    uint256 public totalPromoterBalance;
-    mapping(address => uint256) private _promoterBalances;
+    uint public totalPromoterBalance;
+    mapping(address => uint) private _promoterBalances;
 
     mapping(string => PromoCode) private _promoCodes; // name => promo code
 
-    constructor(address paymentTokenAddress, uint16[] memory planDurations, uint256[] memory planCosts) {
+    constructor(address paymentTokenAddress, uint[] memory planDurations, uint[] memory planCosts) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _paymentToken = IERC20Metadata(paymentTokenAddress);
 
@@ -49,7 +49,7 @@ contract CryptoSubscription is AccessControl {
 
         uint length = planDurations.length;
         for (uint i = 0; i < length; i++) {
-            uint16 duration = planDurations[i];
+            uint duration = planDurations[i];
             _plans[duration] = planCosts[i];
         }
     }
@@ -60,15 +60,15 @@ contract CryptoSubscription is AccessControl {
         return address(_paymentToken);
     }
 
-    function planCost(uint16 duration) public view returns (uint256) {
+    function planCost(uint duration) public view returns (uint) {
         return _plans[duration];
     }
 
-    function subscriptionDeadline(address _address) public view returns (uint32) {
+    function subscriptionDeadline(address _address) public view returns (uint) {
         return _subscriptions[_address];
     }
 
-    function promoterBalance(address _address) public view returns (uint256) {
+    function promoterBalance(address _address) public view returns (uint) {
         return _promoterBalances[_address];
     }
 
@@ -76,7 +76,7 @@ contract CryptoSubscription is AccessControl {
         return _promoCodes[name];
     }
 
-    function addressInfo(address _address) public view returns (bool, bool, uint32, uint256) {
+    function addressInfo(address _address) public view returns (bool, bool, uint, uint) {
         return (hasRole(MODERATOR_ROLE, _address), hasRole(DEFAULT_ADMIN_ROLE, _address), _subscriptions[_address], _promoterBalances[_address]);
     }
 
@@ -93,7 +93,7 @@ contract CryptoSubscription is AccessControl {
         _paymentToken = IERC20Metadata(_address);
         _paymentToken.balanceOf(address(this));
 
-        uint256 _totalPromoterBalance = totalPromoterBalance;
+        uint _totalPromoterBalance = totalPromoterBalance;
 
         if (_totalPromoterBalance != 0) {
             _paymentToken.transferFrom(chargeAddress, address(this), _convert(_totalPromoterBalance, DECIMALS, _paymentToken.decimals()));
@@ -103,39 +103,39 @@ contract CryptoSubscription is AccessControl {
     }
 
     function withdraw(address _address) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 promotersBalance = _convert(totalPromoterBalance, DECIMALS, _paymentToken.decimals());
-        uint256 contractBalance = _paymentToken.balanceOf(address(this));
+        uint promotersBalance = _convert(totalPromoterBalance, DECIMALS, _paymentToken.decimals());
+        uint contractBalance = _paymentToken.balanceOf(address(this));
 
         _paymentToken.transfer(_address, contractBalance - promotersBalance);
     }
 
     // Moderator Actions
 
-    function updatePlans(uint16[] calldata durations, uint256[] calldata costs) public onlyRole(MODERATOR_ROLE) {
+    function updatePlans(uint[] calldata durations, uint[] calldata costs) public onlyRole(MODERATOR_ROLE) {
         uint length = durations.length;
         for (uint i = 0; i < length; i++) {
-            uint16 duration = durations[i];
+            uint duration = durations[i];
             if (duration == 0) revert ZeroDuration();
             _plans[duration] = costs[i];
         }
     }
 
-    function addSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
-        uint32 deadline = _updateDeadline(_address, duration);
-        emit UpdateSubscription(_address, int16(duration), deadline);
+    function addSubscription(address _address, uint duration) public onlyRole(MODERATOR_ROLE) {
+        uint deadline = _updateDeadline(_address, duration);
+        emit UpdateSubscription(_address, int(duration), deadline);
     }
 
-    function subtractSubscription(address _address, uint16 duration) public onlyRole(MODERATOR_ROLE) {
-        uint32 newDeadline = _subscriptions[_address] - uint32(duration) * ONE_DAY_SECONDS;
+    function subtractSubscription(address _address, uint duration) public onlyRole(MODERATOR_ROLE) {
+        uint newDeadline = _subscriptions[_address] - duration * ONE_DAY_SECONDS;
         _subscriptions[_address] = newDeadline;
-        emit UpdateSubscription(_address, - int16(duration), newDeadline);
+        emit UpdateSubscription(_address, - int(duration), newDeadline);
     }
 
-    function setPromoCode(address _address, string memory name, uint16 commissionRate, uint16 discountRate, uint16 duration) public onlyRole(MODERATOR_ROLE) {
+    function setPromoCode(address _address, string memory name, uint commissionRate, uint discountRate, uint duration) public onlyRole(MODERATOR_ROLE) {
         if (bytes(name).length == 0) revert EmptyPromoCode();
         if (_promoCodes[name]._address != address(0)) revert PromoCodeAlreadyExists(name);
 
-        uint32 deadline = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+        uint deadline = block.timestamp + duration * ONE_DAY_SECONDS;
 
         PromoCode storage _promoCode = _promoCodes[name];
         _promoCode._address = _address;
@@ -149,7 +149,7 @@ contract CryptoSubscription is AccessControl {
     // Promoter Actions
 
     function claim(address withdrawAddress) public {
-        uint256 _balance = _promoterBalances[msg.sender];
+        uint _balance = _promoterBalances[msg.sender];
 
         if (_balance == 0) revert NothingToClaim();
 
@@ -160,21 +160,21 @@ contract CryptoSubscription is AccessControl {
 
     // Subscriber Actions
 
-    function subscribe(uint16 duration) public {
-        uint256 cost = _plans[duration];
+    function subscribe(uint duration) public {
+        uint cost = _plans[duration];
 
         if (cost == 0) revert InvalidPlan(duration);
 
-        uint256 tokenCost = _convert(cost, DECIMALS, _paymentToken.decimals());
+        uint tokenCost = _convert(cost, DECIMALS, _paymentToken.decimals());
 
         _paymentToken.transferFrom(msg.sender, address(this), tokenCost);
-        uint32 deadline = _updateDeadline(msg.sender, duration);
+        uint deadline = _updateDeadline(msg.sender, duration);
 
         emit Subscription(msg.sender, duration, address(_paymentToken), tokenCost, deadline);
     }
 
-    function subscribeWithPromoCode(uint16 duration, string memory promoCodeName) public {
-        uint256 cost = _plans[duration];
+    function subscribeWithPromoCode(uint duration, string memory promoCodeName) public {
+        uint cost = _plans[duration];
 
         if (cost == 0) revert InvalidPlan(duration);
 
@@ -183,29 +183,29 @@ contract CryptoSubscription is AccessControl {
         if (_promoCode._address == address(0)) revert InvalidPromoCode(promoCodeName);
         if (_promoCode.deadline < block.timestamp) revert ExpiredPromoCode(promoCodeName);
 
-        uint256 promoCodeAmount = cost * _promoCode.commissionRate / RATE_MULTIPLIER;
+        uint promoCodeAmount = cost * _promoCode.commissionRate / RATE_MULTIPLIER;
         _promoterBalances[_promoCode._address] += promoCodeAmount;
         totalPromoterBalance += promoCodeAmount;
 
-        uint256 contractAmount = cost - cost * _promoCode.discountRate / RATE_MULTIPLIER;
-        uint256 tokenContractAmount = _convert(contractAmount, DECIMALS, _paymentToken.decimals());
+        uint contractAmount = cost - cost * _promoCode.discountRate / RATE_MULTIPLIER;
+        uint tokenContractAmount = _convert(contractAmount, DECIMALS, _paymentToken.decimals());
 
         _paymentToken.transferFrom(msg.sender, address(this), tokenContractAmount);
-        uint32 deadline = _updateDeadline(msg.sender, duration);
+        uint deadline = _updateDeadline(msg.sender, duration);
 
         emit SubscriptionWithPromoCode(msg.sender, promoCodeName, duration, address(_paymentToken), tokenContractAmount, deadline);
     }
 
     // Private Methods
 
-    function _updateDeadline(address _address, uint16 duration) private returns (uint32) {
-        uint32 currentDeadline = _subscriptions[_address];
-        uint32 newDeadline;
+    function _updateDeadline(address _address, uint duration) private returns (uint) {
+        uint currentDeadline = _subscriptions[_address];
+        uint newDeadline;
 
         if (currentDeadline == 0 || block.timestamp > currentDeadline) {
-            newDeadline = uint32(block.timestamp) + uint32(duration) * ONE_DAY_SECONDS;
+            newDeadline = block.timestamp + duration * ONE_DAY_SECONDS;
         } else {
-            newDeadline = currentDeadline + uint32(duration) * ONE_DAY_SECONDS;
+            newDeadline = currentDeadline + duration * ONE_DAY_SECONDS;
         }
 
         _subscriptions[_address] = newDeadline;
@@ -213,7 +213,7 @@ contract CryptoSubscription is AccessControl {
         return newDeadline;
     }
 
-    function _convert(uint256 amount, uint8 fromDecimals, uint8 toDecimals) private pure returns (uint256) {
+    function _convert(uint amount, uint8 fromDecimals, uint8 toDecimals) private pure returns (uint) {
         if (fromDecimals > toDecimals) {
             return amount / 10 ** (fromDecimals - toDecimals);
         } else if (fromDecimals < toDecimals) {
