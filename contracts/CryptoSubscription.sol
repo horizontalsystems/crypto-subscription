@@ -3,8 +3,11 @@ pragma solidity ^0.8.13;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract CryptoSubscription is AccessControl {
+    using SafeERC20 for IERC20Metadata;
+
     struct PromoCode {
         address _address;
         uint commissionRate;
@@ -87,7 +90,7 @@ contract CryptoSubscription is AccessControl {
         uint _balance = _paymentToken.balanceOf(address(this));
 
         if (_balance != 0) {
-            _paymentToken.transfer(withdrawAddress, _balance);
+            _paymentToken.safeTransfer(withdrawAddress, _balance);
         }
 
         _paymentToken = IERC20Metadata(_address);
@@ -96,7 +99,7 @@ contract CryptoSubscription is AccessControl {
         uint _totalPromoterBalance = totalPromoterBalance;
 
         if (_totalPromoterBalance != 0) {
-            _paymentToken.transferFrom(chargeAddress, address(this), _convert(_totalPromoterBalance, DECIMALS, _paymentToken.decimals()));
+            _paymentToken.safeTransferFrom(chargeAddress, address(this), _convert(_totalPromoterBalance, DECIMALS, _paymentToken.decimals()));
         }
 
         emit PaymentTokenChange(oldAddress, _address);
@@ -167,7 +170,7 @@ contract CryptoSubscription is AccessControl {
 
         uint tokenCost = _convert(cost, DECIMALS, _paymentToken.decimals());
 
-        _paymentToken.transferFrom(msg.sender, address(this), tokenCost);
+        _paymentToken.safeTransferFrom(msg.sender, address(this), tokenCost);
         uint deadline = _updateDeadline(msg.sender, duration);
 
         emit Subscription(msg.sender, duration, address(_paymentToken), tokenCost, deadline);
@@ -190,7 +193,7 @@ contract CryptoSubscription is AccessControl {
         uint contractAmount = cost - cost * _promoCode.discountRate / RATE_MULTIPLIER;
         uint tokenContractAmount = _convert(contractAmount, DECIMALS, _paymentToken.decimals());
 
-        _paymentToken.transferFrom(msg.sender, address(this), tokenContractAmount);
+        _paymentToken.safeTransferFrom(msg.sender, address(this), tokenContractAmount);
         uint deadline = _updateDeadline(msg.sender, duration);
 
         emit SubscriptionWithPromoCode(msg.sender, promoCodeName, duration, address(_paymentToken), tokenContractAmount, deadline);
