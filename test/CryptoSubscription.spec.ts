@@ -41,6 +41,10 @@ describe('CryptoSubscription', function() {
     paymentToken = await smock.fake('IERC20Metadata')
     paymentToken.decimals.whenCalledWith().returns(paymentTokenDecimals)
 
+    // required for SafeERC20
+    paymentToken.transferFrom.returns(true)
+    paymentToken.transfer.returns(true)
+
     const CryptoSubscription = await ethers.getContractFactory('CryptoSubscription', { signer: owner })
     contract = await CryptoSubscription.deploy(paymentToken.address, durations, costs)
 
@@ -98,6 +102,9 @@ describe('CryptoSubscription', function() {
     beforeEach(async () => {
       newPaymentToken = await smock.fake('IERC20Metadata')
       newPaymentToken.decimals.whenCalledWith().returns(newPaymentTokenDecimals)
+
+      // required for SafeERC20
+      newPaymentToken.transferFrom.returns(true)
     })
 
     it('reverts if called by non-default admin role', async () => {
