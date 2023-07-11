@@ -109,7 +109,7 @@ contract CryptoSubscription is AccessControl {
         uint promotersBalance = _convert(totalPromoterBalance, DECIMALS, _paymentToken.decimals());
         uint contractBalance = _paymentToken.balanceOf(address(this));
 
-        _paymentToken.transfer(_address, contractBalance - promotersBalance);
+        _paymentToken.safeTransfer(_address, contractBalance - promotersBalance);
     }
 
     // Moderator Actions
@@ -156,7 +156,7 @@ contract CryptoSubscription is AccessControl {
 
         if (_balance == 0) revert NothingToClaim();
 
-        _paymentToken.transfer(withdrawAddress, _convert(_balance, DECIMALS, _paymentToken.decimals()));
+        _paymentToken.safeTransfer(withdrawAddress, _convert(_balance, DECIMALS, _paymentToken.decimals()));
         _promoterBalances[msg.sender] = 0;
         totalPromoterBalance -= _balance;
     }
